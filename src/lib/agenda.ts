@@ -173,6 +173,11 @@ export function addIntervention(iv: Omit<Intervention, 'id'>): Intervention {
   return newIv
 }
 
+export function deleteIntervention(id: string) {
+  const all = getInterventions().filter(iv => iv.id !== id)
+  saveInterventions(all)
+}
+
 export function updateIntervention(id: string, fields: Partial<Omit<Intervention, 'id'>>) {
   const all = getInterventions()
   const idx = all.findIndex(iv => iv.id === id)

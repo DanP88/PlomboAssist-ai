@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
 import {
   ChevronLeft, ChevronRight, Plus, MapPin, Clock,
-  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy
+  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy, Trash2
 } from 'lucide-react'
 import {
   addIntervention, getInterventions, updateStatus,
-  updateIntervention, Intervention
+  updateIntervention, deleteIntervention, Intervention
 } from '../lib/agenda'
 import { formatDate } from '../lib/tarification'
 import { getWorkPlanning, WorkDay, localDateStr } from '../lib/planning'
@@ -73,6 +73,7 @@ export default function Planning() {
   const [dragOverDay, setDragOverDay]           = useState<number | null>(null)
   const [smsModal, setSmsModal]                 = useState<SmsModal | null>(null)
   const [smsCopied, setSmsCopied]               = useState(false)
+  const [confirmDelete, setConfirmDelete]       = useState(false)
   const dragOffsetRef                           = useRef(0)
   const scrollRef                               = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop]               = useState(8 * SLOT_HEIGHT)
@@ -159,6 +160,13 @@ export default function Planning() {
     setShowModal(false)
     setFormClient(''); setFormAddress(''); setFormPhone('')
     setFormDate(''); setFormTime('09:00'); setFormType('Fuite'); setFormDuration('1h30')
+  }
+
+  function handleDelete(iv: Intervention) {
+    deleteIntervention(iv.id)
+    setAllInterventions(getInterventions())
+    setSelectedIv(null)
+    setConfirmDelete(false)
   }
 
   function handleCloturer(iv: Intervention) {
@@ -590,7 +598,7 @@ export default function Planning() {
 
       {/* Modal détail / édition */}
       {selectedIv && (
-        <div className="modal-overlay" onClick={() => { setSelectedIv(null); setEditMode(false) }}>
+        <div className="modal-overlay" onClick={() => { setSelectedIv(null); setEditMode(false); setConfirmDelete(false) }}>
           <div className="modal-box" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
@@ -703,6 +711,54 @@ export default function Planning() {
                       <MapPin size={13} /> Itinéraire
                     </button>
                   </div>
+
+                  {/* Suppression avec confirmation */}
+                  {!confirmDelete ? (
+                    <button
+                      onClick={() => setConfirmDelete(true)}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                        background: 'none', border: '1.5px solid #fecaca', borderRadius: 10,
+                        color: '#dc2626', fontSize: 13, fontWeight: 600, padding: '9px 16px',
+                        cursor: 'pointer', marginTop: 4, transition: 'all 0.15s',
+                      }}
+                      onMouseEnter={e => { (e.currentTarget.style.background = '#fef2f2') }}
+                      onMouseLeave={e => { (e.currentTarget.style.background = 'none') }}
+                    >
+                      <Trash2 size={14} /> Supprimer le rendez-vous
+                    </button>
+                  ) : (
+                    <div style={{
+                      background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 10,
+                      padding: '12px 14px', marginTop: 4,
+                    }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#dc2626', marginBottom: 10, textAlign: 'center' }}>
+                        Confirmer la suppression ?
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <button
+                          onClick={() => setConfirmDelete(false)}
+                          style={{
+                            padding: '8px 0', borderRadius: 8, border: '1.5px solid #e5e7eb',
+                            background: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                          }}
+                        >
+                          Annuler
+                        </button>
+                        <button
+                          onClick={() => handleDelete(selectedIv)}
+                          style={{
+                            padding: '8px 0', borderRadius: 8, border: 'none',
+                            background: '#dc2626', color: 'white',
+                            fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                          }}
+                        >
+                          <Trash2 size={13} /> Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </>
             )}
