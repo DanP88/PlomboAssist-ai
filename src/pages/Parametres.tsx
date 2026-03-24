@@ -552,16 +552,24 @@ export default function Parametres() {
                                 onChange={e => handleWorkDayChange(idx, 'endH', Number(e.target.value))}
                                 style={{ padding: '4px 6px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer' }}
                               >
-                                {Array.from({ length: 24 }, (_, h) => (
-                                  <option key={h} value={h}>{String(h).padStart(2,'0')}h00</option>
-                                ))}
+                                {Array.from({ length: 31 }, (_, h) => {
+                                  const label = h < 24
+                                    ? `${String(h).padStart(2,'0')}h00`
+                                    : `${String(h - 24).padStart(2,'0')}h00 (lendemain)`
+                                  return <option key={h} value={h}>{label}</option>
+                                })}
                               </select>
                             </div>
                             <span style={{
                               fontSize: 11.5, color: '#f97316', fontWeight: 600,
                               background: '#fff7ed', padding: '2px 8px', borderRadius: 6
                             }}>
-                              {day.endH - day.startH}h de travail
+                              {(() => {
+                                const totalMin = (day.endH * 60 + day.endM) - (day.startH * 60 + day.startM)
+                                const h = Math.floor(totalMin / 60)
+                                const m = totalMin % 60
+                                return m > 0 ? `${h}h${String(m).padStart(2,'0')}` : `${h}h`
+                              })()} de travail{day.endH >= 24 ? ' (nuit incluse)' : ''}
                             </span>
                           </div>
                         ) : (

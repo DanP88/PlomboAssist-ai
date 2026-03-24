@@ -131,55 +131,65 @@ export function findBestSlot(
     d.setHours(0, 0, 0, 0)
     const dateStr = d.toISOString().split('T')[0]
 
-    // Heures de travail personnalisées du plombier pour ce jour
+    // Heures de travail : fenêtres disponibles sur ce jour
+    // (prend en compte les débords nuit du jour précédent)
     const workDay = planning.find(wd => wd.date === dateStr)
-    if (!workDay || !workDay.active) continue  // jour non travaillé
-    const workStart = workDay.startH * 60 + workDay.startM
-    const workEnd   = workDay.endH * 60 + workDay.endM
+    const prevD = new Date(d); prevD.setDate(d.getDate() - 1)
+    const prevDateStr = prevD.toISOString().split('T')[0]
+    const prevDay = planning.find(wd => wd.date === prevDateStr)
+
+    // Fenêtres en minutes depuis minuit pour ce jour
+    const windows: Array<{start: number; end: number}> = []
+    // Débord du jour précédent (ex: jeudi endH=27 → vendredi 0h→3h)
+    if (prevDay && prevDay.active && prevDay.endH > 23) {
+      windows.push({ start: 0, end: (prevDay.endH - 24) * 60 + prevDay.endM })
+    }
+    // Plage du jour courant (on coupe à minuit pour éviter de compter deux fois)
+    if (workDay && workDay.active) {
+      windows.push({
+        start: workDay.startH * 60 + workDay.startM,
+        end:   Math.min(24 * 60, workDay.endH * 60 + workDay.endM),
+      })
+    }
+    if (windows.length === 0) continue  // aucune plage ce jour
+
+    // afterSlot logic
+    if (skipDate && dateStr < skipDate) continue
+    if (skipDate && dateStr > skipDate) skipDate = null
 
     const nowMin = dayOffset === 0 ? (now.getHours() * 60 + now.getMinutes()) : 0
-    let earliest = Math.max(workStart, nowMin + pad)
 
-    // afterSlot logic: skip past the already-proposed slot
-    if (skipDate && dateStr === skipDate) {
-      earliest = Math.max(earliest, skipUntilMin)
-    } else if (skipDate && dateStr > skipDate) {
-      skipDate = null  // past the skipped date, search normally
-    } else if (skipDate && dateStr < skipDate) {
-      continue  // before the skip date, skip this day entirely
-    }
-
-    if (earliest + repairDuration > workEnd) continue
-
+    // Interventions déjà planifiées ce jour
     const dayIvs = all
       .filter(iv => iv.date === dateStr && iv.status !== 'cancelled' && iv.status !== 'done')
-      .map(iv => ({
-        start: iv.startH * 60 + iv.startM,
-        end:   iv.startH * 60 + iv.startM + iv.durationMin,
-      }))
+      .map(iv => ({ start: iv.startH * 60 + iv.startM, end: iv.startH * 60 + iv.startM + iv.durationMin }))
       .sort((a, b) => a.start - b.start)
 
-    if (dayIvs.length === 0) {
-      return { date: dateStr, startH: Math.floor(earliest / 60), startM: earliest % 60 }
-    }
+    // Chercher un créneau dans chaque fenêtre de travail
+    for (const win of windows) {
+      let earliest = Math.max(win.start, nowMin + pad)
+      if (skipDate && dateStr === skipDate) earliest = Math.max(earliest, skipUntilMin)
+      if (earliest + repairDuration > win.end) continue
 
-    // Avant la première intervention
-    if (earliest + repairDuration + pad <= dayIvs[0].start) {
-      return { date: dateStr, startH: Math.floor(earliest / 60), startM: earliest % 60 }
-    }
+      // Avant la première intervention dans cette fenêtre
+      const winIvs = dayIvs.filter(iv => iv.start < win.end && iv.end > win.start)
 
-    // Entre deux interventions
-    for (let i = 0; i < dayIvs.length - 1; i++) {
-      const slotStart = Math.max(earliest, dayIvs[i].end + pad)
-      if (slotStart + repairDuration + pad <= dayIvs[i + 1].start) {
-        return { date: dateStr, startH: Math.floor(slotStart / 60), startM: slotStart % 60 }
+      if (winIvs.length === 0) {
+        return { date: dateStr, startH: Math.floor(earliest / 60), startM: earliest % 60 }
       }
-    }
-
-    // Après la dernière intervention
-    const afterLast = Math.max(earliest, dayIvs[dayIvs.length - 1].end + pad)
-    if (afterLast + repairDuration <= workEnd) {
-      return { date: dateStr, startH: Math.floor(afterLast / 60), startM: afterLast % 60 }
+      if (earliest + repairDuration + pad <= winIvs[0].start) {
+        return { date: dateStr, startH: Math.floor(earliest / 60), startM: earliest % 60 }
+      }
+      for (let i = 0; i < winIvs.length - 1; i++) {
+        const s = Math.max(earliest, winIvs[i].end + pad)
+        if (s + repairDuration + pad <= winIvs[i + 1].start) {
+          return { date: dateStr, startH: Math.floor(s / 60), startM: s % 60 }
+        }
+      }
+      const afterLast = Math.max(earliest, winIvs[winIvs.length - 1].end + pad)
+      if (afterLast + repairDuration <= win.end) {
+        return { date: dateStr, startH: Math.floor(afterLast / 60), startM: afterLast % 60 }
+      }
     }
   }
 

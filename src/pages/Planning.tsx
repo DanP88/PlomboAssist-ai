@@ -10,10 +10,10 @@ import {
 import { formatDate } from '../lib/tarification'
 import { getWorkPlanning, WorkDay } from '../lib/planning'
 
-const HOUR_START  = 7
-const HOUR_END    = 22
+const HOUR_START  = 0
+const HOUR_END    = 24
 const TOTAL_HOURS = HOUR_END - HOUR_START
-const SLOT_HEIGHT = 56   // px par heure
+const SLOT_HEIGHT = 44   // px par heure
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
@@ -358,48 +358,66 @@ export default function Planning() {
                     }} />
                   ))}
 
-                  {/* Zones non travaillées — grisées */}
+                  {/* Zones non travaillées — grisées (gestion horaires nuit incluse) */}
                   {(() => {
                     const wd = workPlan.find(d => d.date === dateStr)
-                    if (!wd || !wd.active) {
-                      // Jour entier non travaillé
-                      return (
-                        <div style={{
-                          position: 'absolute', top: 0, left: 0, right: 0,
-                          height: TOTAL_HOURS * SLOT_HEIGHT,
-                          background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
-                          backgroundColor: 'rgba(243,244,246,0.7)',
-                          zIndex: 1, pointerEvents: 'none',
-                        }} />
-                      )
+                    // Jour précédent : peut déborder sur ce jour si endH > 24
+                    const prevDate = new Date(weekStart)
+                    prevDate.setDate(weekStart.getDate() + dayIndex - 1)
+                    const prevDateStr2 = prevDate.toISOString().split('T')[0]
+                    const prevWd = workPlan.find(d => d.date === prevDateStr2)
+
+                    // Construire les fenêtres de travail en minutes depuis minuit
+                    const workingMin: Array<{from: number; to: number}> = []
+
+                    // Débord du jour précédent (ex: jeudi 15h→27h → vendredi 0h→3h)
+                    if (prevWd && prevWd.active && prevWd.endH > 23) {
+                      workingMin.push({ from: 0, to: (prevWd.endH - 24) * 60 + prevWd.endM })
                     }
-                    const workStartPx = topOffset(wd.startH, wd.startM)
-                    const workEndPx   = topOffset(wd.endH, wd.endM)
-                    const totalPx     = TOTAL_HOURS * SLOT_HEIGHT
-                    return (
-                      <>
-                        {/* Avant début de journée */}
-                        {workStartPx > 0 && (
-                          <div style={{
-                            position: 'absolute', top: 0, left: 0, right: 0,
-                            height: workStartPx,
-                            background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
-                            backgroundColor: 'rgba(243,244,246,0.7)',
-                            zIndex: 1, pointerEvents: 'none',
-                          }} />
-                        )}
-                        {/* Après fin de journée */}
-                        {workEndPx < totalPx && (
-                          <div style={{
-                            position: 'absolute', top: workEndPx, left: 0, right: 0,
-                            height: totalPx - workEndPx,
-                            background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
-                            backgroundColor: 'rgba(243,244,246,0.7)',
-                            zIndex: 1, pointerEvents: 'none',
-                          }} />
-                        )}
-                      </>
-                    )
+
+                    // Plage du jour courant (on coupe à minuit : la partie après minuit
+                    // apparaîtra dans le lendemain via le mécanisme précédent)
+                    if (wd && wd.active) {
+                      workingMin.push({
+                        from: wd.startH * 60 + wd.startM,
+                        to:   Math.min(24 * 60, wd.endH * 60 + wd.endM),
+                      })
+                    }
+
+                    workingMin.sort((a, b) => a.from - b.from)
+
+                    // Zones grises = tout ce qui n'est PAS dans les fenêtres de travail
+                    const gray: Array<{fromPx: number; heightPx: number}> = []
+                    let cursor = 0
+                    for (const w of workingMin) {
+                      if (cursor < w.from) {
+                        gray.push({
+                          fromPx:   (cursor / 60) * SLOT_HEIGHT,
+                          heightPx: ((w.from - cursor) / 60) * SLOT_HEIGHT,
+                        })
+                      }
+                      cursor = Math.max(cursor, w.to)
+                    }
+                    if (cursor < 24 * 60) {
+                      gray.push({
+                        fromPx:   (cursor / 60) * SLOT_HEIGHT,
+                        heightPx: ((24 * 60 - cursor) / 60) * SLOT_HEIGHT,
+                      })
+                    }
+
+                    const GRAY_STYLE = {
+                      background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.03) 6px, rgba(0,0,0,0.03) 12px)',
+                      backgroundColor: 'rgba(243,244,246,0.75)',
+                    }
+
+                    return gray.map((z, i) => (
+                      <div key={i} style={{
+                        position: 'absolute', top: z.fromPx, left: 0, right: 0,
+                        height: z.heightPx,
+                        ...GRAY_STYLE,
+                        zIndex: 1, pointerEvents: 'none',
+                      }} />
+                    ))
                   })()}
 
                   {/* Zones cliquables pour créer */}
