@@ -16,12 +16,10 @@ export interface Intervention {
   finishedAt?: string   // ISO datetime quand marquée terminée
 }
 
-const today = new Date().toISOString().split('T')[0]
-
-// Données de démo — présentes au premier lancement
+// Interventions du jour (statuts variés pour la démo)
 const DEMO: Intervention[] = [
   {
-    id: 'demo-1', date: today,
+    id: 'demo-1', date: '', // date set at runtime
     startH: 9, startM: 0, durationMin: 90,
     client: 'Mme Dupont', phone: '06 12 34 56 78',
     address: '12 rue Victor Hugo, Lyon 3',
@@ -29,7 +27,7 @@ const DEMO: Intervention[] = [
     status: 'done',
   },
   {
-    id: 'demo-2', date: today,
+    id: 'demo-2', date: '',
     startH: 11, startM: 30, durationMin: 120,
     client: 'M. Renard', phone: '07 98 76 54 32',
     address: '45 av. Gambetta, Lyon 6',
@@ -37,7 +35,7 @@ const DEMO: Intervention[] = [
     status: 'in_progress',
   },
   {
-    id: 'demo-3', date: today,
+    id: 'demo-3', date: '',
     startH: 14, startM: 30, durationMin: 60,
     client: 'Mme Petit', phone: '06 55 44 33 22',
     address: '8 rue de la Paix, Lyon 2',
@@ -46,31 +44,105 @@ const DEMO: Intervention[] = [
   },
 ]
 
+/** Génère les interventions de démonstration pour les 2 prochaines semaines,
+ *  couvrant tous les modes tarifaires (semaine, urgence, week-end, soir…). */
+function buildDemoWeek(): Intervention[] {
+  const now = new Date()
+  now.setHours(0, 0, 0, 0)
+
+  const dayStr = (offset: number) => {
+    const d = new Date(now)
+    d.setDate(d.getDate() + offset)
+    return d.toISOString().split('T')[0]
+  }
+
+  const dow = now.getDay() // 0=dim, 6=sam
+  // Prochain samedi et dimanche (au moins +1 jour)
+  const daysToSat = dow === 6 ? 7 : (6 - dow) || 7
+  const daysToSun = dow === 0 ? 7 : (7 - dow)
+
+  return [
+    // +1 jour — semaine normale
+    {
+      id: 'demo-w1', date: dayStr(1),
+      startH: 9, startM: 0, durationMin: 60,
+      client: 'M. Bertrand', phone: '06 23 45 67 89',
+      address: '22 rue Bellecour, Lyon 2',
+      type: 'Robinetterie', typeColor: '#2563eb', typeBg: '#eff6ff', typeBorder: '#bfdbfe',
+      status: 'scheduled',
+    },
+    // +2 jours — urgence semaine
+    {
+      id: 'demo-w2', date: dayStr(2),
+      startH: 8, startM: 0, durationMin: 90,
+      client: 'Mme Faure', phone: '07 34 56 78 90',
+      address: '5 place Carnot, Lyon 2',
+      type: "Fuite d'eau", typeColor: '#dc2626', typeBg: '#fef2f2', typeBorder: '#fecaca',
+      status: 'scheduled',
+      notes: 'URGENT — Fuite sous évier cuisine',
+    },
+    // +3 jours — soir (après 20h)
+    {
+      id: 'demo-w3', date: dayStr(3),
+      startH: 20, startM: 0, durationMin: 60,
+      client: 'M. Chabert', phone: '06 45 67 89 01',
+      address: '17 rue Garibaldi, Lyon 3',
+      type: 'Débouchage', typeColor: '#16a34a', typeBg: '#f0fdf4', typeBorder: '#a7f3d0',
+      status: 'scheduled',
+    },
+    // +4 jours — urgence soir
+    {
+      id: 'demo-w4', date: dayStr(4),
+      startH: 20, startM: 30, durationMin: 75,
+      client: 'Mme Girard', phone: '07 56 78 90 12',
+      address: '30 cours Lafayette, Lyon 3',
+      type: 'Chauffe-eau', typeColor: '#7c3aed', typeBg: '#f5f3ff', typeBorder: '#ddd6fe',
+      status: 'scheduled',
+      notes: 'URGENT — Panne chauffe-eau, plus d\'eau chaude',
+    },
+    // Prochain samedi — week-end
+    {
+      id: 'demo-w5', date: dayStr(daysToSat),
+      startH: 10, startM: 30, durationMin: 90,
+      client: 'M. Morin', phone: '06 67 89 01 23',
+      address: '8 rue de Sèze, Lyon 6',
+      type: 'Entretien', typeColor: '#16a34a', typeBg: '#f0fdf4', typeBorder: '#a7f3d0',
+      status: 'scheduled',
+    },
+    // Prochain dimanche — urgence week-end
+    {
+      id: 'demo-w6', date: dayStr(daysToSun),
+      startH: 9, startM: 0, durationMin: 90,
+      client: 'Mme Leclerc', phone: '07 78 90 12 34',
+      address: '3 rue Président Herriot, Lyon 1',
+      type: "Fuite d'eau", typeColor: '#dc2626', typeBg: '#fef2f2', typeBorder: '#fecaca',
+      status: 'scheduled',
+      notes: 'URGENT — Inondation en cours, cave touchée',
+    },
+  ]
+}
+
+/** Recharge les données de démo une fois par jour.
+ *  Les interventions créées par le pro (id non préfixés "demo-") sont préservées. */
 export function getInterventions(): Intervention[] {
   const todayStr = new Date().toISOString().split('T')[0]
+  const lastReset = localStorage.getItem('plombo_demo_reset')
   const stored = localStorage.getItem('plombo_agenda')
 
-  if (!stored) {
-    const demo = DEMO.map(iv => ({ ...iv, date: todayStr }))
-    localStorage.setItem('plombo_agenda', JSON.stringify(demo))
-    return demo
+  if (lastReset !== todayStr) {
+    // Nouveau jour : reconstruire les démos, garder les RDV réels du pro
+    const demoToday = DEMO.map(iv => ({ ...iv, date: todayStr }))
+    const demoWeek = buildDemoWeek()
+    const userItems: Intervention[] = stored
+      ? (JSON.parse(stored) as Intervention[]).filter(iv => !iv.id.startsWith('demo-'))
+      : []
+    const all = [...userItems, ...demoToday, ...demoWeek]
+    localStorage.setItem('plombo_agenda', JSON.stringify(all))
+    localStorage.setItem('plombo_demo_reset', todayStr)
+    return all
   }
 
-  const data: Intervention[] = JSON.parse(stored)
-
-  // Si les démos ont des dates d'un autre jour, les rafraîchir à aujourd'hui
-  const demoItems = data.filter(iv => iv.id.startsWith('demo-'))
-  if (demoItems.length > 0 && demoItems.every(iv => iv.date !== todayStr)) {
-    const updated = data.map(iv => {
-      if (!iv.id.startsWith('demo-')) return iv
-      const original = DEMO.find(d => d.id === iv.id)
-      return { ...iv, date: todayStr, status: original?.status ?? iv.status, finishedAt: undefined }
-    })
-    localStorage.setItem('plombo_agenda', JSON.stringify(updated))
-    return updated
-  }
-
-  return data
+  return stored ? JSON.parse(stored) : []
 }
 
 export function saveInterventions(list: Intervention[]) {
@@ -78,8 +150,9 @@ export function saveInterventions(list: Intervention[]) {
 }
 
 export function getTodayInterventions(): Intervention[] {
+  const todayStr = new Date().toISOString().split('T')[0]
   return getInterventions()
-    .filter(iv => iv.date === today)
+    .filter(iv => iv.date === todayStr)
     .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
 }
 

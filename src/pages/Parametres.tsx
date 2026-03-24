@@ -2,9 +2,10 @@ import { useState, useRef } from 'react'
 import {
   Settings, Building, User, CreditCard, Bell,
   Wrench, CheckCircle, ChevronRight, Upload, Trash2,
-  Plus, Edit, Star, X, Euro
+  Plus, Edit, Star, X, Euro, CalendarDays
 } from 'lucide-react'
 import { getTarif, saveTarif, TarifConfig } from '../lib/tarification'
+import { getWorkPlanning, saveWorkPlanning, WorkDay } from '../lib/planning'
 
 const defaultPrestations = [
   { id: 1, cat: 'Dépannage', name: 'Remplacement joint robinet', price: 45, active: true },
@@ -29,12 +30,14 @@ const defaultNotifs = [
   { label: 'Rapport hebdomadaire', sub: 'Chaque lundi à 8h — résumé de la semaine', push: true, sms: false },
 ]
 
-type Section = 'entreprise' | 'prestations' | 'abonnement' | 'notifications' | 'tarification'
+type Section = 'entreprise' | 'prestations' | 'abonnement' | 'notifications' | 'tarification' | 'planning'
 
 export default function Parametres() {
   const [section, setSection] = useState<Section>('entreprise')
   const [tarif, setTarif] = useState<TarifConfig>(getTarif)
   const [tarifSaved, setTarifSaved] = useState(false)
+  const [workPlan, setWorkPlan] = useState<WorkDay[]>(getWorkPlanning)
+  const [planSaved, setPlanSaved] = useState(false)
 
   function handleTarifChange(field: keyof TarifConfig, value: number) {
     setTarif(prev => ({ ...prev, [field]: value }))
@@ -90,10 +93,21 @@ export default function Parametres() {
     setTimeout(() => setPlanToast(''), 3000)
   }
 
+  function handleWorkDayChange(idx: number, field: keyof WorkDay, value: boolean | number) {
+    setWorkPlan(prev => prev.map((d, i) => i === idx ? { ...d, [field]: value } : d))
+  }
+
+  function saveWorkPlan() {
+    saveWorkPlanning(workPlan)
+    setPlanSaved(true)
+    setTimeout(() => setPlanSaved(false), 2500)
+  }
+
   const sections = [
     { id: 'entreprise' as Section, label: 'Mon entreprise', icon: Building },
     { id: 'prestations' as Section, label: 'Prestations', icon: Wrench },
     { id: 'tarification' as Section, label: 'Tarification', icon: Euro },
+    { id: 'planning' as Section, label: 'Planning de travail', icon: CalendarDays },
     { id: 'notifications' as Section, label: 'Notifications', icon: Bell },
     { id: 'abonnement' as Section, label: 'Abonnement', icon: CreditCard },
   ]
@@ -452,6 +466,116 @@ export default function Parametres() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <button className="btn-primary" onClick={saveTarifConfig}>
                   <CheckCircle size={15} /> Enregistrer la tarification
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Planning de travail */}
+          {section === 'planning' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {planSaved && (
+                <div style={{ background: '#f0fdf4', border: '1px solid #a7f3d0', borderRadius: 10, padding: '10px 16px', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <CheckCircle size={15} color="#10b981" />
+                  <span style={{ fontSize: 13.5, color: '#16a34a', fontWeight: 600 }}>Planning enregistré — l'IA en tiendra compte pour les prochains RDV</span>
+                </div>
+              )}
+
+              <div style={{ background: 'white', borderRadius: 14, padding: '24px 26px', border: '1px solid #f0f0f0' }}>
+                <div style={{ marginBottom: 20 }}>
+                  <h2 style={{ fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 6 }}>Mes horaires de travail — 14 prochains jours</h2>
+                  <p style={{ fontSize: 12.5, color: '#9ca3af' }}>
+                    L'assistant téléphonique IA utilise ces horaires pour proposer des créneaux de rendez-vous uniquement pendant vos heures de travail.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+                  {workPlan.map((day, idx) => {
+                    const d = new Date(day.date + 'T12:00:00')
+                    const dow = d.getDay()
+                    const isWeekend = dow === 0 || dow === 6
+                    const dayName = d.toLocaleDateString('fr-FR', { weekday: 'long' })
+                    const dateLabel = d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })
+                    const dayCapital = dayName.charAt(0).toUpperCase() + dayName.slice(1)
+
+                    return (
+                      <div key={day.date} style={{
+                        display: 'flex', alignItems: 'center', gap: 14,
+                        padding: '12px 0',
+                        borderBottom: idx < workPlan.length - 1 ? '1px solid #f5f5f5' : 'none',
+                        opacity: day.active ? 1 : 0.45,
+                      }}>
+                        {/* Jour */}
+                        <div style={{ width: 130, flexShrink: 0 }}>
+                          <div style={{
+                            fontSize: 13.5, fontWeight: 700,
+                            color: isWeekend ? '#7c3aed' : '#111827',
+                          }}>{dayCapital}</div>
+                          <div style={{ fontSize: 12, color: '#9ca3af' }}>{dateLabel}</div>
+                        </div>
+
+                        {/* Toggle actif */}
+                        <div
+                          onClick={() => handleWorkDayChange(idx, 'active', !day.active)}
+                          style={{
+                            width: 38, height: 22, borderRadius: 11,
+                            background: day.active ? '#f97316' : '#e5e7eb',
+                            cursor: 'pointer', transition: 'background 0.2s',
+                            display: 'flex', alignItems: 'center',
+                            padding: '3px',
+                            justifyContent: day.active ? 'flex-end' : 'flex-start',
+                            flexShrink: 0,
+                          }}
+                        >
+                          <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'white', boxShadow: '0 1px 3px rgba(0,0,0,0.2)' }} />
+                        </div>
+
+                        {/* Heures */}
+                        {day.active ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 12, color: '#6b7280' }}>De</span>
+                              <select
+                                value={day.startH}
+                                onChange={e => handleWorkDayChange(idx, 'startH', Number(e.target.value))}
+                                style={{ padding: '4px 6px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer' }}
+                              >
+                                {Array.from({ length: 24 }, (_, h) => (
+                                  <option key={h} value={h}>{String(h).padStart(2,'0')}h00</option>
+                                ))}
+                              </select>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <span style={{ fontSize: 12, color: '#6b7280' }}>à</span>
+                              <select
+                                value={day.endH}
+                                onChange={e => handleWorkDayChange(idx, 'endH', Number(e.target.value))}
+                                style={{ padding: '4px 6px', borderRadius: 7, border: '1.5px solid #e5e7eb', fontSize: 13, fontWeight: 600, color: '#111827', outline: 'none', cursor: 'pointer' }}
+                              >
+                                {Array.from({ length: 24 }, (_, h) => (
+                                  <option key={h} value={h}>{String(h).padStart(2,'0')}h00</option>
+                                ))}
+                              </select>
+                            </div>
+                            <span style={{
+                              fontSize: 11.5, color: '#f97316', fontWeight: 600,
+                              background: '#fff7ed', padding: '2px 8px', borderRadius: 6
+                            }}>
+                              {day.endH - day.startH}h de travail
+                            </span>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: 12.5, color: '#9ca3af', fontStyle: 'italic' }}>Jour de repos — aucun RDV proposé par l'IA</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <button className="btn-primary" onClick={saveWorkPlan}>
+                  <CheckCircle size={15} /> Enregistrer le planning
                 </button>
               </div>
             </div>

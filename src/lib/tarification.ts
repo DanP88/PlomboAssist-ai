@@ -1,4 +1,5 @@
 import { getInterventions } from './agenda'
+import { getWorkPlanning } from './planning'
 
 export interface TarifConfig {
   trajetDefaut: number       // minutes de trajet estimés (défaut 20)
@@ -112,9 +113,8 @@ export function findBestSlot(
   afterSlot?: { date: string; startH: number; startM: number }
 ): { date: string; startH: number; startM: number } | null {
   const cfg = config || getTarif()
-  const pad = cfg.trajetDefaut + cfg.margeMin   // tampon avant/après = 35 min
-  const workStart = 8 * 60                       // 8h00
-  const workEnd   = 19 * 60                      // 19h00
+  const pad = cfg.trajetDefaut + cfg.margeMin   // tampon avant/après
+  const planning = getWorkPlanning()
 
   const all = getInterventions()
   const now = new Date()
@@ -130,6 +130,12 @@ export function findBestSlot(
     d.setDate(d.getDate() + dayOffset)
     d.setHours(0, 0, 0, 0)
     const dateStr = d.toISOString().split('T')[0]
+
+    // Heures de travail personnalisées du plombier pour ce jour
+    const workDay = planning.find(wd => wd.date === dateStr)
+    if (!workDay || !workDay.active) continue  // jour non travaillé
+    const workStart = workDay.startH * 60 + workDay.startM
+    const workEnd   = workDay.endH * 60 + workDay.endM
 
     const nowMin = dayOffset === 0 ? (now.getHours() * 60 + now.getMinutes()) : 0
     let earliest = Math.max(workStart, nowMin + pad)

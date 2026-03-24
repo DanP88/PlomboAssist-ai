@@ -186,6 +186,10 @@ export default function Dashboard() {
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
           {/* Tarif mode selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', whiteSpace: 'nowrap' }}>
+              Moment :
+            </span>
           <div style={{ position: 'relative' }}>
             <select
               value={tarifMode}
@@ -216,6 +220,7 @@ export default function Dashboard() {
             }}>
               ▾
             </div>
+          </div>
           </div>
 
           <button className="btn-secondary" onClick={() => navigate('/planning')}>
