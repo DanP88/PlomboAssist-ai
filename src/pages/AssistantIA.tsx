@@ -13,7 +13,7 @@ import { addIntervention, minutesToHHMM } from '../lib/agenda'
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 type Step =
-  | 'idle' | 'ringing' | 'greeting' | 'urgency'
+  | 'idle' | 'ringing' | 'ia_takeover' | 'greeting' | 'urgency'
   | 'diag1' | 'diag2' | 'diag3' | 'diag4'
   | 'collect_name' | 'collect_address' | 'collect_phone'
   | 'calculating' | 'slot_proposal' | 'confirmed'
@@ -115,6 +115,7 @@ export default function AssistantIA() {
   const [slotInfo, setSlotInfo]     = useState<SlotInfo | null>(null)
   const [altSlotCount, setAltSlotCount] = useState(0)
   const [callTimer, setCallTimer]   = useState(0)
+  const [ringCount, setRingCount]   = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
 
@@ -154,11 +155,19 @@ export default function AssistantIA() {
     setAltSlotCount(0)
     setTextInput('')
     setCallTimer(0)
+    setRingCount(0)
     setShowCall(true)
+    // 3 sonneries espacées de 1.4s
+    setTimeout(() => setRingCount(1), 800)
+    setTimeout(() => setRingCount(2), 2200)
+    setTimeout(() => setRingCount(3), 3600)
+    // Marc ne répond pas → transition IA
+    setTimeout(() => setStep('ia_takeover'), 4800)
+    // L'IA prend l'appel
     setTimeout(() => {
       setStep('greeting')
       iaMsg("Bonjour, vous êtes bien chez Plomberie Lefebvre. Marc n'est pas disponible pour le moment. Je suis son assistante IA. Êtes-vous déjà client chez nous ?")
-    }, 1800)
+    }, 6200)
   }
 
   function handleExisting(val: boolean) {
@@ -383,18 +392,18 @@ export default function AssistantIA() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 36, height: 36, borderRadius: '50%',
-                  background: step === 'ringing' ? '#f97316' : '#10b981',
+                  background: step === 'ringing' ? '#f97316' : step === 'ia_takeover' ? '#7c3aed' : '#10b981',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  boxShadow: `0 0 0 4px ${step === 'ringing' ? 'rgba(249,115,22,0.3)' : 'rgba(16,185,129,0.3)'}`
+                  boxShadow: `0 0 0 4px ${step === 'ringing' ? 'rgba(249,115,22,0.3)' : step === 'ia_takeover' ? 'rgba(124,58,237,0.3)' : 'rgba(16,185,129,0.3)'}`
                 }}>
-                  {step === 'ringing' ? <PhoneCall size={17} color="white" /> : <Mic size={17} color="white" />}
+                  {step === 'ringing' ? <PhoneCall size={17} color="white" /> : step === 'ia_takeover' ? <Bot size={17} color="white" /> : <Mic size={17} color="white" />}
                 </div>
                 <div>
                   <div style={{ color: 'white', fontSize: 14, fontWeight: 700 }}>
-                    {step === 'ringing' ? 'Appel entrant...' : step === 'confirmed' ? 'Appel terminé' : 'Appel en cours'}
+                    {step === 'ringing' ? 'Appel entrant — Marc ne répond pas' : step === 'ia_takeover' ? "L'IA prend l'appel" : step === 'confirmed' ? 'Appel terminé' : 'IA en ligne'}
                   </div>
                   <div style={{ color: '#9ca3af', fontSize: 12 }}>
-                    {step === 'ringing' ? 'Numéro inconnu' : `Assistant IA · ${fmtTimer(callTimer)}`}
+                    {step === 'ringing' ? 'Sonnerie en cours...' : step === 'ia_takeover' ? 'Transfert automatique' : `Assistant IA · ${fmtTimer(callTimer)}`}
                   </div>
                 </div>
               </div>
@@ -427,19 +436,84 @@ export default function AssistantIA() {
                 borderRight: '1px solid #f0f0f0'
               }}>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 8px' }}>
-                  {step === 'ringing' && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 16 }}>
-                      <div style={{
-                        width: 72, height: 72, borderRadius: '50%',
-                        background: 'linear-gradient(135deg, #f97316, #ea580c)',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        animation: 'pulse 1s infinite',
-                        boxShadow: '0 0 0 12px rgba(249,115,22,0.15)'
-                      }}>
-                        <Phone size={30} color="white" />
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Appel entrant...</div>
-                      <div style={{ fontSize: 13, color: '#9ca3af' }}>L'assistant IA répond automatiquement</div>
+                  {(step === 'ringing' || step === 'ia_takeover') && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 24 }}>
+
+                      {step === 'ringing' ? (<>
+                        {/* Téléphone animé */}
+                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <div style={{ position: 'absolute', width: 110, height: 110, borderRadius: '50%', border: '2px solid rgba(249,115,22,0.25)', animation: 'ripple 1.4s ease-out infinite' }} />
+                          <div style={{ position: 'absolute', width: 140, height: 140, borderRadius: '50%', border: '2px solid rgba(249,115,22,0.12)', animation: 'ripple 1.4s ease-out 0.4s infinite' }} />
+                          <div style={{
+                            width: 80, height: 80, borderRadius: '50%', zIndex: 1,
+                            background: 'linear-gradient(135deg, #1e293b, #334155)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.25)',
+                          }}>
+                            <Phone size={34} color="white" style={{ animation: 'shake 0.4s ease-in-out infinite' }} />
+                          </div>
+                        </div>
+
+                        {/* Infos */}
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: '#111827', marginBottom: 4 }}>Appel entrant</div>
+                          <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 20 }}>Numéro inconnu</div>
+
+                          {/* Indicateurs de sonnerie */}
+                          <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginBottom: 10 }}>
+                            {[1, 2, 3].map(n => (
+                              <div key={n} style={{
+                                width: 14, height: 14, borderRadius: '50%',
+                                background: ringCount >= n ? '#f97316' : '#e5e7eb',
+                                boxShadow: ringCount >= n ? '0 0 8px rgba(249,115,22,0.5)' : 'none',
+                                transition: 'all 0.3s',
+                              }} />
+                            ))}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#6b7280', fontWeight: 600 }}>
+                            {ringCount === 0 ? 'Sonnerie...' : `Sonnerie ${ringCount} sur 3...`}
+                          </div>
+                        </div>
+
+                        {/* Statut Marc */}
+                        <div style={{
+                          background: '#fef2f2', border: '1px solid #fecaca',
+                          borderRadius: 10, padding: '10px 20px',
+                          display: 'flex', alignItems: 'center', gap: 8
+                        }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', animation: 'pulse 1s infinite' }} />
+                          <span style={{ fontSize: 13, fontWeight: 600, color: '#92400e' }}>
+                            Marc ne répond pas...
+                          </span>
+                        </div>
+                      </>) : (<>
+                        {/* Transition IA takeover */}
+                        <div style={{ textAlign: 'center' }}>
+                          <div style={{
+                            width: 72, height: 72, borderRadius: '50%', margin: '0 auto 20px',
+                            background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: '0 0 0 14px rgba(124,58,237,0.15)',
+                          }}>
+                            <Bot size={32} color="white" />
+                          </div>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: '#111827', marginBottom: 8 }}>
+                            Marc n'a pas répondu
+                          </div>
+                          <div style={{ fontSize: 14, color: '#7c3aed', fontWeight: 700, marginBottom: 6 }}>
+                            → L'assistante IA prend l'appel
+                          </div>
+                          <div style={{ fontSize: 12.5, color: '#9ca3af' }}>
+                            Le client ne sera pas perdu · RDV pris automatiquement
+                          </div>
+                        </div>
+                      </>)}
+
+                      <style>{`
+                        @keyframes ripple { 0% { transform: scale(0.9); opacity: 1; } 100% { transform: scale(1.3); opacity: 0; } }
+                        @keyframes shake { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+                        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+                      `}</style>
                     </div>
                   )}
 
