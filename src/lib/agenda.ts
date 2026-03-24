@@ -47,12 +47,30 @@ const DEMO: Intervention[] = [
 ]
 
 export function getInterventions(): Intervention[] {
+  const todayStr = new Date().toISOString().split('T')[0]
   const stored = localStorage.getItem('plombo_agenda')
+
   if (!stored) {
-    localStorage.setItem('plombo_agenda', JSON.stringify(DEMO))
-    return DEMO
+    const demo = DEMO.map(iv => ({ ...iv, date: todayStr }))
+    localStorage.setItem('plombo_agenda', JSON.stringify(demo))
+    return demo
   }
-  return JSON.parse(stored)
+
+  const data: Intervention[] = JSON.parse(stored)
+
+  // Si les démos ont des dates d'un autre jour, les rafraîchir à aujourd'hui
+  const demoItems = data.filter(iv => iv.id.startsWith('demo-'))
+  if (demoItems.length > 0 && demoItems.every(iv => iv.date !== todayStr)) {
+    const updated = data.map(iv => {
+      if (!iv.id.startsWith('demo-')) return iv
+      const original = DEMO.find(d => d.id === iv.id)
+      return { ...iv, date: todayStr, status: original?.status ?? iv.status, finishedAt: undefined }
+    })
+    localStorage.setItem('plombo_agenda', JSON.stringify(updated))
+    return updated
+  }
+
+  return data
 }
 
 export function saveInterventions(list: Intervention[]) {

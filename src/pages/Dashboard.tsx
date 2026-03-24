@@ -9,6 +9,9 @@ import {
   getTodayInterventions, updateStatus, calcETA, minutesToHHMM,
   Intervention
 } from '../lib/agenda'
+import {
+  getTarifMode, saveTarifMode, TarifMode, TARIF_MODE_LABELS
+} from '../lib/tarification'
 
 const kpis = [
   {
@@ -102,10 +105,25 @@ export default function Dashboard() {
   const [interventions, setInterventions] = useState<Intervention[]>([])
   const [msgModal, setMsgModal] = useState<MsgModal | null>(null)
   const [copied, setCopied] = useState(false)
+  const [tarifMode, setTarifMode] = useState<TarifMode>(getTarifMode)
 
   useEffect(() => {
     setInterventions(getTodayInterventions())
   }, [])
+
+  function handleModeChange(mode: TarifMode) {
+    setTarifMode(mode)
+    saveTarifMode(mode)
+  }
+
+  const modeStyle: Record<string, { color: string; bg: string; border: string }> = {
+    'semaine':          { color: '#374151', bg: '#f5f6fa',  border: '#e5e7eb' },
+    'urgence-semaine':  { color: '#b45309', bg: '#fffbeb',  border: '#fde68a' },
+    'week-end':         { color: '#2563eb', bg: '#eff6ff',  border: '#bfdbfe' },
+    'urgence-week-end': { color: '#dc2626', bg: '#fef2f2',  border: '#fecaca' },
+    'soir':             { color: '#7c3aed', bg: '#f5f3ff',  border: '#ddd6fe' },
+    'urgence-soir':     { color: '#be185d', bg: '#fdf2f8',  border: '#f9a8d4' },
+  }
 
   function handleFinished(iv: Intervention) {
     const finishedAt = new Date().toISOString()
@@ -166,7 +184,40 @@ export default function Dashboard() {
           </h1>
           <p style={{ color: '#6b7280', fontSize: 14 }}>{dateCapital}</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Tarif mode selector */}
+          <div style={{ position: 'relative' }}>
+            <select
+              value={tarifMode}
+              onChange={e => handleModeChange(e.target.value as TarifMode)}
+              style={{
+                appearance: 'none',
+                WebkitAppearance: 'none',
+                padding: '8px 32px 8px 12px',
+                borderRadius: 10,
+                border: `1.5px solid ${modeStyle[tarifMode].border}`,
+                background: modeStyle[tarifMode].bg,
+                color: modeStyle[tarifMode].color,
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: 'pointer',
+                outline: 'none',
+                transition: 'all 0.2s',
+              }}
+            >
+              {(Object.keys(TARIF_MODE_LABELS) as TarifMode[]).map(m => (
+                <option key={m} value={m}>{TARIF_MODE_LABELS[m]}</option>
+              ))}
+            </select>
+            {/* Chevron icon overlay */}
+            <div style={{
+              position: 'absolute', right: 9, top: '50%', transform: 'translateY(-50%)',
+              pointerEvents: 'none', color: modeStyle[tarifMode].color, lineHeight: 1
+            }}>
+              ▾
+            </div>
+          </div>
+
           <button className="btn-secondary" onClick={() => navigate('/planning')}>
             <Calendar size={15} />
             Planning

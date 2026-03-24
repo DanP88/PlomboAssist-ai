@@ -32,6 +32,32 @@ export const REPAIR_DURATIONS: Record<string, number> = {
 }
 
 const STORAGE_KEY = 'plombo_tarif'
+const MODE_KEY = 'plombo_tarif_mode'
+
+export type TarifMode =
+  | 'semaine'
+  | 'urgence-semaine'
+  | 'week-end'
+  | 'urgence-week-end'
+  | 'soir'
+  | 'urgence-soir'
+
+export const TARIF_MODE_LABELS: Record<TarifMode, string> = {
+  'semaine':          'Semaine',
+  'urgence-semaine':  'Urgence semaine',
+  'week-end':         'Week-end',
+  'urgence-week-end': 'Urgence week-end',
+  'soir':             'Soir',
+  'urgence-soir':     'Urgence soir',
+}
+
+export function getTarifMode(): TarifMode {
+  return (localStorage.getItem(MODE_KEY) as TarifMode) || 'semaine'
+}
+
+export function saveTarifMode(mode: TarifMode) {
+  localStorage.setItem(MODE_KEY, mode)
+}
 
 export function getTarif(): TarifConfig {
   const s = localStorage.getItem(STORAGE_KEY)
