@@ -8,6 +8,7 @@ import {
   updateIntervention, Intervention
 } from '../lib/agenda'
 import { formatDate } from '../lib/tarification'
+import { getWorkPlanning, WorkDay } from '../lib/planning'
 
 const HOUR_START  = 7
 const HOUR_END    = 22
@@ -82,6 +83,8 @@ export default function Planning() {
   const [formTime,     setFormTime]     = useState('09:00')
   const [formType,     setFormType]     = useState('Fuite')
   const [formDuration, setFormDuration] = useState('1h30')
+
+  const [workPlan] = useState<WorkDay[]>(getWorkPlanning)
 
   useEffect(() => { setAllInterventions(getInterventions()) }, [])
 
@@ -354,6 +357,50 @@ export default function Planning() {
                       left: 0, right: 0, height: 1, background: '#f3f4f6',
                     }} />
                   ))}
+
+                  {/* Zones non travaillées — grisées */}
+                  {(() => {
+                    const wd = workPlan.find(d => d.date === dateStr)
+                    if (!wd || !wd.active) {
+                      // Jour entier non travaillé
+                      return (
+                        <div style={{
+                          position: 'absolute', top: 0, left: 0, right: 0,
+                          height: TOTAL_HOURS * SLOT_HEIGHT,
+                          background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
+                          backgroundColor: 'rgba(243,244,246,0.7)',
+                          zIndex: 1, pointerEvents: 'none',
+                        }} />
+                      )
+                    }
+                    const workStartPx = topOffset(wd.startH, wd.startM)
+                    const workEndPx   = topOffset(wd.endH, wd.endM)
+                    const totalPx     = TOTAL_HOURS * SLOT_HEIGHT
+                    return (
+                      <>
+                        {/* Avant début de journée */}
+                        {workStartPx > 0 && (
+                          <div style={{
+                            position: 'absolute', top: 0, left: 0, right: 0,
+                            height: workStartPx,
+                            background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
+                            backgroundColor: 'rgba(243,244,246,0.7)',
+                            zIndex: 1, pointerEvents: 'none',
+                          }} />
+                        )}
+                        {/* Après fin de journée */}
+                        {workEndPx < totalPx && (
+                          <div style={{
+                            position: 'absolute', top: workEndPx, left: 0, right: 0,
+                            height: totalPx - workEndPx,
+                            background: 'repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(0,0,0,0.025) 6px, rgba(0,0,0,0.025) 12px)',
+                            backgroundColor: 'rgba(243,244,246,0.7)',
+                            zIndex: 1, pointerEvents: 'none',
+                          }} />
+                        )}
+                      </>
+                    )
+                  })()}
 
                   {/* Zones cliquables pour créer */}
                   {!draggingId && hours.slice(0, -1).map(h => (
