@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  plomboassist:
+    build: .
+    container_name: plomboassist-ai
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+    networks:
+      - web
+
+networks:
+  web:
+    external: true
