@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, FileText, AlertTriangle, PhoneCall, Plus,
-  Clock, CheckCircle, ChevronRight, Zap, RotateCcw,
+  Clock, CheckCircle, ChevronRight, RotateCcw,
   Phone, MapPin, Calendar, Euro, Bot, MessageCircle, Copy, X
 } from 'lucide-react'
 import {
@@ -47,10 +47,10 @@ const kpis = [
     alert: true,
   },
   {
-    label: 'Nouvelles demandes',
-    value: '4',
+    label: 'Appels IA traités',
+    value: '8',
     trend: null,
-    sub: 'Dont 2 urgentes',
+    sub: '6 RDV pris automatiquement',
     icon: PhoneCall,
     color: '#10b981',
     bg: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
@@ -59,10 +59,10 @@ const kpis = [
   },
 ]
 
-const inboxPreview = [
-  { id: 1, name: 'M. Bernard', summary: 'Chauffe-eau HS depuis ce matin', urgency: 1, timeAgo: 'Il y a 12 min' },
-  { id: 2, name: 'Mme Simon', summary: 'Fuite sous évier cuisine', urgency: 2, timeAgo: 'Il y a 1h' },
-  { id: 3, name: 'M. Laurent', summary: 'Robinet qui fuit salle de bain', urgency: 3, timeAgo: 'Il y a 3h' },
+const recentIACalls = [
+  { id: 1, name: 'M. Bernard Paul',  phone: '06 12 34 56 78', type: 'Chauffe-eau', urgency: 'urgent',      rdv: "Auj. 15h30", timeAgo: "Il y a 2h" },
+  { id: 2, name: 'Mme Simon Claire', phone: '07 98 76 54 32', type: 'Fuite',       urgency: 'semi-urgent', rdv: "Auj. 13h00", timeAgo: "Il y a 3h" },
+  { id: 3, name: 'M. Laurent Jean',  phone: '06 55 44 33 22', type: 'Robinetterie', urgency: 'planifiable', rdv: "Jeu. 9h00",   timeAgo: "Hier 16h30" },
 ]
 
 const relancesDevis = [
@@ -219,32 +219,6 @@ export default function Dashboard() {
           </button>
         </div>
       )}
-
-      {/* Alert banner — demandes urgentes */}
-      <div style={{
-        background: 'linear-gradient(135deg, #fef2f2, #fff7ed)',
-        border: '1.5px solid #fecaca',
-        borderRadius: 12, padding: '12px 18px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 20, cursor: 'pointer', gap: 12
-      }} onClick={() => navigate('/demandes')}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: '#fef2f2', border: '1px solid #fecaca',
-            display: 'flex', alignItems: 'center', justifyContent: 'center'
-          }}>
-            <Zap size={16} color="#dc2626" />
-          </div>
-          <div>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>2 demandes urgentes non traitées</span>
-            <span style={{ fontSize: 13, color: '#6b7280', marginLeft: 8 }}>M. Bernard (chauffe-eau) · Mme Simon (fuite)</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#f97316', fontWeight: 600, fontSize: 13, flexShrink: 0 }}>
-          Traiter <ChevronRight size={15} />
-        </div>
-      </div>
 
       {/* KPI row */}
       <div className="grid-4" style={{ marginBottom: 20 }}>
@@ -429,61 +403,60 @@ export default function Dashboard() {
         {/* Right col */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-          {/* Inbox preview */}
+          {/* Derniers appels IA */}
           <div style={{ background: 'white', borderRadius: 14, padding: '20px 22px', border: '1px solid #f0f0f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div style={{
                   width: 34, height: 34, borderRadius: 9,
-                  background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                  background: 'linear-gradient(135deg, #7c3aed, #6d28d9)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center'
                 }}>
-                  <Phone size={16} color="white" />
+                  <Bot size={16} color="white" />
                 </div>
                 <div>
-                  <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Demandes</div>
-                  <div style={{ fontSize: 12, color: '#9ca3af' }}>4 non traitées</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Derniers appels IA</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>RDV pris automatiquement</div>
                 </div>
               </div>
-              <button className="btn-ghost" onClick={() => navigate('/demandes')} style={{ fontSize: 12 }}>
+              <button className="btn-ghost" onClick={() => navigate('/assistant-ia')} style={{ fontSize: 12 }}>
                 Voir tout <ChevronRight size={13} />
               </button>
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {inboxPreview.map(d => {
-                const uc = urgencyConfig[d.urgency]
+              {recentIACalls.map(c => {
+                const urgColors: Record<string, { color: string; bg: string }> = {
+                  'urgent':      { color: '#dc2626', bg: '#fef2f2' },
+                  'semi-urgent': { color: '#d97706', bg: '#fffbeb' },
+                  'planifiable': { color: '#16a34a', bg: '#f0fdf4' },
+                }
+                const uc = urgColors[c.urgency]
                 return (
-                  <div key={d.id} style={{
-                    padding: '12px 14px',
-                    borderRadius: 10,
-                    border: `1.5px solid ${d.urgency === 1 ? '#fecaca' : '#f0f0f0'}`,
-                    background: d.urgency === 1 ? '#fffafa' : '#fafafa',
-                    cursor: 'pointer'
-                  }}
-                    onClick={() => navigate('/demandes')}
-                  >
+                  <div key={c.id} style={{
+                    padding: '11px 13px', borderRadius: 10,
+                    border: '1px solid #f0f0f0', background: '#fafafa',
+                  }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
-                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>{d.name}</span>
-                      <span style={{
-                        fontSize: 10.5, fontWeight: 700,
-                        color: uc.color, background: uc.bg,
-                        padding: '2px 7px', borderRadius: 8
-                      }}>{uc.label}</span>
+                      <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>{c.name}</span>
+                      <span style={{ fontSize: 10.5, fontWeight: 700, color: uc.color, background: uc.bg, padding: '2px 7px', borderRadius: 8 }}>{c.urgency}</span>
                     </div>
-                    <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 4, lineHeight: 1.4 }}>{d.summary}</div>
-                    <div style={{ fontSize: 11, color: '#9ca3af' }}>{d.timeAgo}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{c.type} · {c.phone}</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: '#7c3aed' }}>📅 {c.rdv}</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>{c.timeAgo}</div>
                   </div>
                 )
               })}
             </div>
 
             <button
-              className="btn-primary"
+              className="btn-secondary"
               style={{ width: '100%', justifyContent: 'center', marginTop: 14, fontSize: 13 }}
-              onClick={() => navigate('/demandes')}
+              onClick={() => navigate('/assistant-ia')}
             >
-              Gérer les demandes
+              <Phone size={13} /> Journal des appels IA
             </button>
           </div>
 
