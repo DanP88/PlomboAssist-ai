@@ -74,6 +74,9 @@ export default function Planning() {
   const [smsModal, setSmsModal]                 = useState<SmsModal | null>(null)
   const [smsCopied, setSmsCopied]               = useState(false)
   const [confirmDelete, setConfirmDelete]       = useState(false)
+  const [confirmOutsideWork, setConfirmOutsideWork]         = useState(false)
+  const [confirmOutsideWorkEdit, setConfirmOutsideWorkEdit] = useState(false)
+  const [pendingDrop, setPendingDrop]           = useState<{iv: Intervention; dateStr: string; newH: number; newM: number} | null>(null)
   const dragOffsetRef                           = useRef(0)
   const scrollRef                               = useRef<HTMLDivElement>(null)
   const [scrollTop, setScrollTop]               = useState(8 * SLOT_HEIGHT)
@@ -138,6 +141,24 @@ export default function Planning() {
       })
   }
 
+  // ── Vérification horaires de travail ─────────────────────────
+  function isOutsideWorkHours(dateStr: string, h: number, m: number): boolean {
+    const startMin = h * 60 + m
+    const wd = workPlan.find(d => d.date === dateStr)
+    const prevDate = new Date(dateStr + 'T12:00:00')
+    prevDate.setDate(prevDate.getDate() - 1)
+    const prevWd = workPlan.find(d => d.date === localDateStr(prevDate))
+    const workingMin: Array<{from: number; to: number}> = []
+    if (prevWd && prevWd.active && prevWd.endH > 23) {
+      workingMin.push({ from: 0, to: (prevWd.endH - 24) * 60 + prevWd.endM })
+    }
+    if (wd && wd.active) {
+      workingMin.push({ from: wd.startH * 60 + wd.startM, to: Math.min(24 * 60, wd.endH * 60 + wd.endM) })
+    }
+    if (workingMin.length === 0) return true
+    return !workingMin.some(w => startMin >= w.from && startMin < w.to)
+  }
+
   // ── Création ─────────────────────────────────────────────────
   function openModal(dateStr?: string, hour?: number) {
     setFormDate(dateStr || todayStr)
@@ -145,9 +166,13 @@ export default function Planning() {
     setShowModal(true)
   }
 
-  function handleCreate() {
+  function handleCreate(force = false) {
     if (!formClient.trim() || !formDate || !formTime) return
     const [h, m] = formTime.split(':').map(Number)
+    if (!force && isOutsideWorkHours(formDate, h, m)) {
+      setConfirmOutsideWork(true)
+      return
+    }
     const colors = TYPE_COLORS[formType] || TYPE_COLORS['Fuite']
     addIntervention({
       date: formDate, startH: h, startM: m,
@@ -158,6 +183,7 @@ export default function Planning() {
     })
     setAllInterventions(getInterventions())
     setShowModal(false)
+    setConfirmOutsideWork(false)
     setFormClient(''); setFormAddress(''); setFormPhone('')
     setFormDate(''); setFormTime('09:00'); setFormType('Fuite'); setFormDuration('1h30')
   }
@@ -191,6 +217,15 @@ export default function Planning() {
     setDragOverDay(null)
   }
 
+  function applyDrop(iv: Intervention, dateStr: string, newH: number, newM: number) {
+    updateIntervention(iv.id, { date: dateStr, startH: newH, startM: newM })
+    setAllInterventions(getInterventions())
+    const oldLabel = `${formatDate(iv.date)} à ${fmtHM(iv.startH * 60 + iv.startM)}`
+    const newLabel = `${formatDate(dateStr)} à ${fmtHM(newH * 60 + newM)}`
+    const msg = `Bonjour ${iv.client},\nVotre rendez-vous (${iv.type}) prévu ${oldLabel} a été déplacé au ${newLabel}.\n\nÀ bientôt ! — Marc`
+    if (iv.phone) setSmsModal({ phone: iv.phone, client: iv.client, message: msg })
+  }
+
   function handleDrop(e: React.DragEvent<HTMLDivElement>, dateStr: string) {
     e.preventDefault()
     const ivId = e.dataTransfer.getData('ivId')
@@ -210,13 +245,12 @@ export default function Planning() {
 
     if (newH === iv.startH && newM === iv.startM && dateStr === iv.date) return
 
-    updateIntervention(ivId, { date: dateStr, startH: newH, startM: newM })
-    setAllInterventions(getInterventions())
+    if (isOutsideWorkHours(dateStr, newH, newM)) {
+      setPendingDrop({ iv, dateStr, newH, newM })
+      return
+    }
 
-    const oldLabel = `${formatDate(iv.date)} à ${fmtHM(iv.startH * 60 + iv.startM)}`
-    const newLabel = `${formatDate(dateStr)} à ${fmtHM(newH * 60 + newM)}`
-    const msg = `Bonjour ${iv.client},\nVotre rendez-vous (${iv.type}) prévu ${oldLabel} a été déplacé au ${newLabel}.\n\nÀ bientôt ! — Marc`
-    if (iv.phone) setSmsModal({ phone: iv.phone, client: iv.client, message: msg })
+    applyDrop(iv, dateStr, newH, newM)
   }
 
   // ── Édition ───────────────────────────────────────────────────
@@ -228,9 +262,13 @@ export default function Planning() {
     setEditMode(true)
   }
 
-  function handleSaveEdit() {
+  function handleSaveEdit(force = false) {
     if (!selectedIv) return
     const [h, m]  = editTime.split(':').map(Number)
+    if (!force && isOutsideWorkHours(editDate, h, m)) {
+      setConfirmOutsideWorkEdit(true)
+      return
+    }
     const newDur  = DURATIONS[editDuration] || 90
     updateIntervention(selectedIv.id, { date: editDate, startH: h, startM: m, durationMin: newDur })
     setAllInterventions(getInterventions())
@@ -239,6 +277,7 @@ export default function Planning() {
     if (selectedIv.phone) setSmsModal({ phone: selectedIv.phone, client: selectedIv.client, message: msg })
     setSelectedIv(null)
     setEditMode(false)
+    setConfirmOutsideWorkEdit(false)
   }
 
   // ── SMS ───────────────────────────────────────────────────────
@@ -638,11 +677,11 @@ export default function Planning() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                   <div>
                     <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Date</label>
-                    <input className="input-field" type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
+                    <input className="input-field" type="date" value={editDate} onChange={e => { setEditDate(e.target.value); setConfirmOutsideWorkEdit(false) }} />
                   </div>
                   <div>
                     <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Heure de début</label>
-                    <input className="input-field" type="time" value={editTime} onChange={e => setEditTime(e.target.value)} />
+                    <input className="input-field" type="time" value={editTime} onChange={e => { setEditTime(e.target.value); setConfirmOutsideWorkEdit(false) }} />
                   </div>
                 </div>
 
@@ -653,9 +692,27 @@ export default function Planning() {
                   </select>
                 </div>
 
+                {confirmOutsideWorkEdit && (
+                  <div style={{
+                    background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 9,
+                    padding: '10px 14px', fontSize: 12.5, color: '#92400e',
+                  }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Hors plage de travail</div>
+                    <div style={{ marginBottom: 10 }}>Ce créneau est en dehors de vos heures de travail. Confirmez-vous quand même ?</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <button onClick={() => setConfirmOutsideWorkEdit(false)} style={{ padding: '7px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', fontSize: 12.5, fontWeight: 600, cursor: 'pointer' }}>
+                        Modifier l'heure
+                      </button>
+                      <button onClick={() => handleSaveEdit(true)} style={{ padding: '7px 0', borderRadius: 8, border: 'none', background: '#f97316', color: 'white', fontSize: 12.5, fontWeight: 700, cursor: 'pointer' }}>
+                        Confirmer quand même
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
-                  <button className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => setEditMode(false)}>Annuler</button>
-                  <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={handleSaveEdit}>
+                  <button className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => { setEditMode(false); setConfirmOutsideWorkEdit(false) }}>Annuler</button>
+                  <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleSaveEdit()}>
                     <CheckCircle size={14} /> Enregistrer
                   </button>
                 </div>
@@ -768,7 +825,7 @@ export default function Planning() {
 
       {/* Modal création */}
       {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
+        <div className="modal-overlay" onClick={() => { setShowModal(false); setConfirmOutsideWork(false) }}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Nouvelle intervention</h2>
@@ -790,11 +847,11 @@ export default function Planning() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Date *</label>
-                  <input className="input-field" type="date" value={formDate} onChange={e => setFormDate(e.target.value)} />
+                  <input className="input-field" type="date" value={formDate} onChange={e => { setFormDate(e.target.value); setConfirmOutsideWork(false) }} />
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Heure *</label>
-                  <input className="input-field" type="time" value={formTime} onChange={e => setFormTime(e.target.value)} />
+                  <input className="input-field" type="time" value={formTime} onChange={e => { setFormTime(e.target.value); setConfirmOutsideWork(false) }} />
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -811,13 +868,80 @@ export default function Planning() {
                   </select>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 6 }}>
-                <button className="btn-secondary" onClick={() => setShowModal(false)} style={{ justifyContent: 'center' }}>Annuler</button>
-                <button className="btn-primary" onClick={handleCreate} style={{ justifyContent: 'center' }}
-                  disabled={!formClient.trim() || !formDate || !formTime}>
-                  Créer
-                </button>
-              </div>
+              {confirmOutsideWork && (
+                <div style={{
+                  background: '#fff7ed', border: '1.5px solid #fed7aa', borderRadius: 9,
+                  padding: '12px 14px', fontSize: 13, color: '#92400e',
+                }}>
+                  <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Hors plage de travail</div>
+                  <div style={{ marginBottom: 10 }}>Ce créneau est en dehors de vos heures de travail configurées. Voulez-vous quand même créer ce rendez-vous ?</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button onClick={() => setConfirmOutsideWork(false)} style={{ padding: '8px 0', borderRadius: 8, border: '1.5px solid #e5e7eb', background: 'white', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                      Modifier l'heure
+                    </button>
+                    <button onClick={() => handleCreate(true)} style={{ padding: '8px 0', borderRadius: 8, border: 'none', background: '#f97316', color: 'white', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                      Confirmer quand même
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {!confirmOutsideWork && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 6 }}>
+                  <button className="btn-secondary" onClick={() => { setShowModal(false); setConfirmOutsideWork(false) }} style={{ justifyContent: 'center' }}>Annuler</button>
+                  <button className="btn-primary" onClick={() => handleCreate()} style={{ justifyContent: 'center' }}
+                    disabled={!formClient.trim() || !formDate || !formTime}>
+                    Créer
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirmation déplacement hors horaires */}
+      {pendingDrop && (
+        <div className="modal-overlay" onClick={() => setPendingDrop(null)}>
+          <div className="modal-box" style={{ maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+              <div style={{
+                width: 36, height: 36, borderRadius: 9, flexShrink: 0,
+                background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18,
+              }}>⚠️</div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>Hors plage de travail</div>
+            </div>
+            <div style={{ fontSize: 13.5, color: '#374151', lineHeight: 1.65, marginBottom: 20 }}>
+              Vous déplacez <strong>{pendingDrop.iv.client}</strong> vers le{' '}
+              <strong>{formatDate(pendingDrop.dateStr)} à {fmtHM(pendingDrop.newH * 60 + pendingDrop.newM)}</strong>,
+              qui est en dehors de vos heures de travail configurées.
+              <br /><br />
+              Confirmez-vous ce déplacement ?
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                className="btn-secondary"
+                style={{ justifyContent: 'center' }}
+                onClick={() => setPendingDrop(null)}
+              >
+                Annuler
+              </button>
+              <button
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+                  background: '#f97316', color: 'white', border: 'none', borderRadius: 10,
+                  padding: '10px 16px', fontSize: 13.5, fontWeight: 700, cursor: 'pointer',
+                }}
+                onClick={() => {
+                  const { iv, dateStr, newH, newM } = pendingDrop
+                  applyDrop(iv, dateStr, newH, newM)
+                  setPendingDrop(null)
+                }}
+              >
+                Confirmer quand même
+              </button>
             </div>
           </div>
         </div>
