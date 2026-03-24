@@ -9,7 +9,8 @@ import {
   findBestSlot, calcPrix, getTarif, formatDate,
   REPAIR_DURATIONS
 } from '../lib/tarification'
-import { addIntervention, minutesToHHMM } from '../lib/agenda'
+import { addIntervention, minutesToHHMM, getInterventions, Intervention } from '../lib/agenda'
+import { geocodeAddress, getTravelTimeMin } from '../lib/geo'
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 type Step =
@@ -115,6 +116,15 @@ export default function AssistantIA() {
   const [slotInfo, setSlotInfo]     = useState<SlotInfo | null>(null)
   const [altSlotCount, setAltSlotCount] = useState(0)
   const [callTimer, setCallTimer]   = useState(0)
+
+  interface TravelContext {
+    loading: boolean
+    prevIv?: Intervention
+    prevTravelMin?: number
+    nextIv?: Intervention
+    nextTravelMin?: number
+  }
+  const [travelCtx, setTravelCtx] = useState<TravelContext | null>(null)
   const [ringCount, setRingCount]   = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -148,6 +158,7 @@ export default function AssistantIA() {
 
   /* ─── Step transitions ─────────────────────────────────────────────── */
   function startCall() {
+    setTravelCtx(null)
     setStep('ringing')
     setMessages([])
     setClientInfo({})
@@ -272,6 +283,7 @@ export default function AssistantIA() {
     }
     setSlotInfo(si)
     setStep('slot_proposal')
+    computeTravelContext(si, info.address || '')
 
     const dateLabel = formatDate(slot.date)
     const timeLabel = minutesToHHMM(slot.startH * 60 + slot.startM)
@@ -340,6 +352,31 @@ export default function AssistantIA() {
     setStep('calculating')
     iaMsg('Je cherche un autre créneau disponible...', 300)
     setTimeout(() => proposeSlot(undefined, true), 1800)
+  }
+
+  async function computeTravelContext(slot: SlotInfo, newAddress: string) {
+    setTravelCtx({ loading: true })
+    const all = getInterventions()
+    const slotStartMin = slot.startH * 60 + slot.startM
+    const slotEndMin = slotStartMin + slot.durationMin
+    const dayIvs = all
+      .filter(iv => iv.date === slot.date && iv.status !== 'cancelled' && iv.status !== 'done')
+      .sort((a, b) => (a.startH * 60 + a.startM) - (b.startH * 60 + b.startM))
+    const prevIv = [...dayIvs].reverse().find(iv => iv.startH * 60 + iv.startM + iv.durationMin <= slotStartMin)
+    const nextIv = dayIvs.find(iv => iv.startH * 60 + iv.startM >= slotEndMin)
+
+    try {
+      const [newCoords, prevCoords, nextCoords] = await Promise.all([
+        geocodeAddress(newAddress),
+        prevIv?.address ? geocodeAddress(prevIv.address) : Promise.resolve(null),
+        nextIv?.address ? geocodeAddress(nextIv.address) : Promise.resolve(null),
+      ])
+      const prevTravelMin = (prevCoords && newCoords) ? await getTravelTimeMin(prevCoords, newCoords) : undefined
+      const nextTravelMin = (newCoords && nextCoords) ? await getTravelTimeMin(newCoords, nextCoords) : undefined
+      setTravelCtx({ loading: false, prevIv, prevTravelMin, nextIv, nextTravelMin })
+    } catch {
+      setTravelCtx({ loading: false, prevIv, nextIv })
+    }
   }
 
   function endCall() {
@@ -739,6 +776,89 @@ export default function AssistantIA() {
                     {slotInfo.majorations.map(m => (
                       <div key={m} style={{ fontSize: 11.5, color: '#d97706', fontWeight: 600, paddingLeft: 22 }}>{m}</div>
                     ))}
+                  </div>
+                )}
+
+                {/* Travel context card */}
+                {(travelCtx || slotInfo) && (
+                  <div style={{ background: 'white', borderRadius: 12, padding: '14px 16px', border: '1px solid #f0f0f0' }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+                      Contexte du créneau
+                    </div>
+
+                    {/* Duration */}
+                    {slotInfo && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, padding: '6px 10px', background: '#f5f3ff', borderRadius: 8 }}>
+                        <Clock size={12} color="#7c3aed" />
+                        <span style={{ fontSize: 12, color: '#374151' }}>
+                          Durée estimée : <strong style={{ color: '#7c3aed' }}>{slotInfo.durationMin} min</strong>
+                          <span style={{ color: '#9ca3af', fontSize: 11 }}> ({clientInfo.problem})</span>
+                        </span>
+                      </div>
+                    )}
+
+                    {travelCtx?.loading && (
+                      <div style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', padding: '8px 0' }}>
+                        🔄 Calcul des trajets en cours...
+                      </div>
+                    )}
+
+                    {!travelCtx?.loading && travelCtx && (<>
+                      {/* Previous intervention */}
+                      {travelCtx.prevIv ? (
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>RDV précédent</div>
+                          <div style={{ fontSize: 12, color: '#374151', fontWeight: 500, marginBottom: 2 }}>
+                            {travelCtx.prevIv.client} · {travelCtx.prevIv.startH}h{String(travelCtx.prevIv.startM).padStart(2,'0')}–{Math.floor((travelCtx.prevIv.startH * 60 + travelCtx.prevIv.startM + travelCtx.prevIv.durationMin)/60)}h{String((travelCtx.prevIv.startH * 60 + travelCtx.prevIv.startM + travelCtx.prevIv.durationMin)%60).padStart(2,'0')}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>{travelCtx.prevIv.address}</div>
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            background: travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#fff7ed' : '#f0fdf4',
+                            border: `1px solid ${travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#fed7aa' : '#a7f3d0'}`,
+                            borderRadius: 7, padding: '4px 8px'
+                          }}>
+                            <span style={{ fontSize: 13 }}>🚗</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#92400e' : '#15803d' }}>
+                              {travelCtx.prevTravelMin !== undefined ? `~${travelCtx.prevTravelMin} min de trajet` : '~20 min (estimé)'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic', marginBottom: 8 }}>
+                          Aucun RDV avant ce créneau
+                        </div>
+                      )}
+
+                      {/* Separator */}
+                      <div style={{ height: 1, background: '#f0f0f0', margin: '8px 0' }} />
+
+                      {/* Next intervention */}
+                      {travelCtx.nextIv ? (
+                        <div>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 4 }}>RDV suivant</div>
+                          <div style={{ fontSize: 12, color: '#374151', fontWeight: 500, marginBottom: 2 }}>
+                            {travelCtx.nextIv.client} · {travelCtx.nextIv.startH}h{String(travelCtx.nextIv.startM).padStart(2,'0')}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>{travelCtx.nextIv.address}</div>
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 6,
+                            background: travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#fff7ed' : '#f0fdf4',
+                            border: `1px solid ${travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#fed7aa' : '#a7f3d0'}`,
+                            borderRadius: 7, padding: '4px 8px'
+                          }}>
+                            <span style={{ fontSize: 13 }}>🚗</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#92400e' : '#15803d' }}>
+                              {travelCtx.nextTravelMin !== undefined ? `~${travelCtx.nextTravelMin} min de trajet` : '~20 min (estimé)'}
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
+                          Aucun RDV après ce créneau
+                        </div>
+                      )}
+                    </>)}
                   </div>
                 )}
               </div>

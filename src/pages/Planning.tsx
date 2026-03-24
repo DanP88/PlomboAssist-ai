@@ -7,6 +7,7 @@ import {
   addIntervention, getInterventions, updateStatus,
   updateIntervention, deleteIntervention, Intervention
 } from '../lib/agenda'
+import { geocodeAddress, getTravelTimeMin } from '../lib/geo'
 import { formatDate } from '../lib/tarification'
 import { getWorkPlanning, WorkDay, localDateStr } from '../lib/planning'
 
@@ -91,6 +92,7 @@ export default function Planning() {
   const [formDuration, setFormDuration] = useState('1h30')
 
   const [workPlan] = useState<WorkDay[]>(getWorkPlanning)
+  const [travelTimes, setTravelTimes] = useState<Record<string, number>>({})
 
   useEffect(() => { setAllInterventions(getInterventions()) }, [])
 
@@ -101,6 +103,45 @@ export default function Planning() {
     el.scrollTop = 8 * SLOT_HEIGHT
     setScrollTop(8 * SLOT_HEIGHT)
   }, [weekOffset])
+
+  // Calcul des temps de trajet entre interventions consécutives
+  useEffect(() => {
+    let cancelled = false
+    async function computeTravelTimes() {
+      const now = new Date()
+      now.setHours(0, 0, 0, 0)
+      const ws = new Date(now)
+      ws.setDate(now.getDate() - ((now.getDay() + 6) % 7) + weekOffset * 7)
+      ws.setHours(0, 0, 0, 0)
+      function getDs(i: number) {
+        const d = new Date(ws)
+        d.setDate(ws.getDate() + i)
+        return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
+      }
+      const pairs: Array<{ key: string; iv1: Intervention; iv2: Intervention }> = []
+      for (let i = 0; i < 7; i++) {
+        const ds = getDs(i)
+        const dayIvs = allInterventions
+          .filter(iv => iv.date === ds && iv.status !== 'cancelled' && iv.status !== 'done')
+          .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
+        for (let j = 0; j < dayIvs.length - 1; j++) {
+          pairs.push({ key: `${dayIvs[j].id}-${dayIvs[j+1].id}`, iv1: dayIvs[j], iv2: dayIvs[j+1] })
+        }
+      }
+      for (const { key, iv1, iv2 } of pairs) {
+        if (cancelled) return
+        if (!iv1.address || !iv2.address) continue
+        const [c1, c2] = await Promise.all([geocodeAddress(iv1.address), geocodeAddress(iv2.address)])
+        if (cancelled) return
+        if (c1 && c2) {
+          const t = await getTravelTimeMin(c1, c2)
+          if (!cancelled) setTravelTimes(prev => ({ ...prev, [key]: t }))
+        }
+      }
+    }
+    computeTravelTimes()
+    return () => { cancelled = true }
+  }, [allInterventions, weekOffset])
 
   const today     = new Date()
   const todayStr  = localDateStr(today)
@@ -627,6 +668,45 @@ export default function Planning() {
                       </div>
                     )
                   })}
+
+                  {/* Badges de trajet entre interventions consécutives */}
+                  {(() => {
+                    const sorted = dayIvs
+                      .filter(iv => iv.status !== 'cancelled' && iv.status !== 'done')
+                      .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
+                    return sorted.slice(0, -1).map((iv, idx) => {
+                      const next = sorted[idx + 1]
+                      const key = `${iv.id}-${next.id}`
+                      const travelMin = travelTimes[key]
+                      const endTop = topOffset(iv.startH, iv.startM) + blockHeight(iv.durationMin)
+                      const gap = topOffset(next.startH, next.startM) - endTop
+                      if (gap < 20) return null
+                      const isTight = travelMin !== undefined && gap < travelMin * SLOT_HEIGHT / 60 + 10
+                      return (
+                        <div
+                          key={key}
+                          style={{
+                            position: 'absolute',
+                            top: endTop + 3,
+                            left: 4, right: 4,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            zIndex: 3, pointerEvents: 'none',
+                          }}
+                        >
+                          <div style={{
+                            display: 'flex', alignItems: 'center', gap: 3,
+                            background: travelMin === undefined ? '#f5f6fa' : isTight ? '#fef2f2' : '#f0fdf4',
+                            border: `1px solid ${travelMin === undefined ? '#e5e7eb' : isTight ? '#fecaca' : '#a7f3d0'}`,
+                            borderRadius: 10, padding: '2px 7px',
+                            fontSize: 10, fontWeight: 700,
+                            color: travelMin === undefined ? '#9ca3af' : isTight ? '#dc2626' : '#16a34a',
+                          }}>
+                            🚗 {travelMin !== undefined ? `~${travelMin} min` : '...'}
+                          </div>
+                        </div>
+                      )
+                    })
+                  })()}
                 </div>
               )
             })}

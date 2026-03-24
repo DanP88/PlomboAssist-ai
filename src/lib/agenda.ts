@@ -23,6 +23,7 @@ export interface Intervention {
   status: 'scheduled' | 'in_progress' | 'done' | 'cancelled'
   notes?: string
   finishedAt?: string   // ISO datetime quand marquée terminée
+  coords?: { lat: number; lon: number }
 }
 
 // Interventions du jour (statuts variés pour la démo)
