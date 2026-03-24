@@ -1,31 +1,34 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   ChevronLeft, ChevronRight, Plus, MapPin, Clock,
-  Phone, CheckCircle, Calendar, X
+  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy
 } from 'lucide-react'
 import {
   addIntervention, getInterventions, updateStatus,
-  Intervention
+  updateIntervention, Intervention
 } from '../lib/agenda'
+import { formatDate } from '../lib/tarification'
 
-const HOUR_START = 7
-const HOUR_END   = 19
+const HOUR_START  = 7
+const HOUR_END    = 22
 const TOTAL_HOURS = HOUR_END - HOUR_START
-const SLOT_HEIGHT = 56 // px par heure
+const SLOT_HEIGHT = 56   // px par heure
 
 const WEEK_DAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
 
 const TYPE_COLORS: Record<string, { typeColor: string; typeBg: string; typeBorder: string }> = {
-  'Fuite':        { typeColor: '#dc2626', typeBg: '#fef2f2', typeBorder: '#fecaca' },
-  'Chauffe-eau':  { typeColor: '#2563eb', typeBg: '#eff6ff', typeBorder: '#bfdbfe' },
-  'Débouchage':   { typeColor: '#d97706', typeBg: '#fffbeb', typeBorder: '#fde68a' },
-  'Entretien':    { typeColor: '#16a34a', typeBg: '#f0fdf4', typeBorder: '#a7f3d0' },
-  'Rénovation':   { typeColor: '#7c3aed', typeBg: '#faf5ff', typeBorder: '#ddd6fe' },
-  'Robinetterie': { typeColor: '#0891b2', typeBg: '#ecfeff', typeBorder: '#a5f3fc' },
+  'Fuite':          { typeColor: '#dc2626', typeBg: '#fef2f2', typeBorder: '#fecaca' },
+  "Fuite d'eau":    { typeColor: '#dc2626', typeBg: '#fef2f2', typeBorder: '#fecaca' },
+  'Chauffe-eau':    { typeColor: '#2563eb', typeBg: '#eff6ff', typeBorder: '#bfdbfe' },
+  'Débouchage':     { typeColor: '#d97706', typeBg: '#fffbeb', typeBorder: '#fde68a' },
+  'Entretien':      { typeColor: '#16a34a', typeBg: '#f0fdf4', typeBorder: '#a7f3d0' },
+  'Rénovation':     { typeColor: '#7c3aed', typeBg: '#faf5ff', typeBorder: '#ddd6fe' },
+  'Robinetterie':   { typeColor: '#0891b2', typeBg: '#ecfeff', typeBorder: '#a5f3fc' },
 }
 
 const DURATIONS: Record<string, number> = {
-  '30 min': 30, '1 heure': 60, '1h30': 90, '2 heures': 120, '3 heures': 180,
+  '15 min': 15, '30 min': 30, '45 min': 45, '1 heure': 60,
+  '1h30': 90, '2 heures': 120, '3 heures': 180, '4 heures': 240,
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
@@ -41,14 +44,37 @@ function topOffset(h: number, m: number) {
 function blockHeight(min: number) {
   return Math.max((min / 60) * SLOT_HEIGHT, 22)
 }
+function fmtHM(totalMin: number) {
+  const h = Math.floor(totalMin / 60) % 24
+  const m = totalMin % 60
+  return `${h}h${String(m).padStart(2,'0')}`
+}
+function durationLabel(min: number) {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h === 0) return `${m} min`
+  if (m === 0) return `${h}h`
+  return `${h}h${String(m).padStart(2,'0')}`
+}
+
+interface SmsModal { phone: string; client: string; message: string }
 
 export default function Planning() {
-  const [weekOffset, setWeekOffset]           = useState(0)
+  const [weekOffset, setWeekOffset]             = useState(0)
   const [allInterventions, setAllInterventions] = useState<Intervention[]>([])
-  const [selectedIv, setSelectedIv]           = useState<Intervention | null>(null)
-  const [showModal, setShowModal]             = useState(false)
+  const [selectedIv, setSelectedIv]             = useState<Intervention | null>(null)
+  const [showModal, setShowModal]               = useState(false)
+  const [editMode, setEditMode]                 = useState(false)
+  const [editDate, setEditDate]                 = useState('')
+  const [editTime, setEditTime]                 = useState('09:00')
+  const [editDuration, setEditDuration]         = useState('1h30')
+  const [draggingId, setDraggingId]             = useState<string | null>(null)
+  const [dragOverDay, setDragOverDay]           = useState<number | null>(null)
+  const [smsModal, setSmsModal]                 = useState<SmsModal | null>(null)
+  const [smsCopied, setSmsCopied]               = useState(false)
+  const dragOffsetRef                           = useRef(0)
 
-  // Pré-remplissage à la création
+  // Champs du formulaire de création
   const [formClient,   setFormClient]   = useState('')
   const [formAddress,  setFormAddress]  = useState('')
   const [formPhone,    setFormPhone]    = useState('')
@@ -70,28 +96,20 @@ export default function Planning() {
     d.setDate(weekStart.getDate() + i)
     return d.toISOString().split('T')[0]
   }
-
   function getDayDate(i: number) {
     const d = new Date(weekStart)
     d.setDate(weekStart.getDate() + i)
     return d
   }
 
-  const hours = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => HOUR_START + i)
+  const hours       = Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => HOUR_START + i)
+  const nowTop      = topOffset(today.getHours(), today.getMinutes())
+  const nowInRange  = today.getHours() >= HOUR_START && today.getHours() < HOUR_END
+  const weekTotal   = WEEK_DAYS.reduce((sum, _, i) => sum + allInterventions.filter(iv => iv.date === getDayDateStr(i)).length, 0)
+  const weekDone    = WEEK_DAYS.reduce((sum, _, i) => sum + allInterventions.filter(iv => iv.date === getDayDateStr(i) && iv.status === 'done').length, 0)
+  const weekLabel   = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
 
-  const nowTop = topOffset(today.getHours(), today.getMinutes())
-  const nowInRange = today.getHours() >= HOUR_START && today.getHours() < HOUR_END
-
-  // Totaux semaine
-  const weekTotal = WEEK_DAYS.reduce((sum, _, i) => {
-    const ds = getDayDateStr(i)
-    return sum + allInterventions.filter(iv => iv.date === ds).length
-  }, 0)
-  const weekDone = WEEK_DAYS.reduce((sum, _, i) => {
-    const ds = getDayDateStr(i)
-    return sum + allInterventions.filter(iv => iv.date === ds && iv.status === 'done').length
-  }, 0)
-
+  // ── Création ─────────────────────────────────────────────────
   function openModal(dateStr?: string, hour?: number) {
     setFormDate(dateStr || todayStr)
     setFormTime(hour !== undefined ? `${String(hour).padStart(2,'0')}:00` : '09:00')
@@ -121,7 +139,84 @@ export default function Planning() {
     setSelectedIv(null)
   }
 
-  const weekLabel = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+  // ── Drag & drop ───────────────────────────────────────────────
+  function handleDragStart(e: React.DragEvent<HTMLDivElement>, iv: Intervention) {
+    e.dataTransfer.setData('ivId', iv.id)
+    e.dataTransfer.effectAllowed = 'move'
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    dragOffsetRef.current = Math.max(0, (e.clientY - rect.top) / SLOT_HEIGHT * 60)
+    setDraggingId(iv.id)
+    setSelectedIv(null)
+    setEditMode(false)
+  }
+
+  function handleDragEnd() {
+    setDraggingId(null)
+    setDragOverDay(null)
+  }
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>, dateStr: string) {
+    e.preventDefault()
+    const ivId = e.dataTransfer.getData('ivId')
+    const iv   = allInterventions.find(x => x.id === ivId)
+    if (!iv) { setDraggingId(null); setDragOverDay(null); return }
+
+    const rect    = e.currentTarget.getBoundingClientRect()
+    const y       = e.clientY - rect.top
+    const rawMin  = HOUR_START * 60 + (y / SLOT_HEIGHT) * 60 - dragOffsetRef.current
+    const clamped = Math.max(HOUR_START * 60, Math.min((HOUR_END - 1) * 60, rawMin))
+    const snapped = Math.round(clamped / 15) * 15
+    const newH    = Math.floor(snapped / 60)
+    const newM    = snapped % 60
+
+    setDraggingId(null)
+    setDragOverDay(null)
+
+    if (newH === iv.startH && newM === iv.startM && dateStr === iv.date) return
+
+    updateIntervention(ivId, { date: dateStr, startH: newH, startM: newM })
+    setAllInterventions(getInterventions())
+
+    const oldLabel = `${formatDate(iv.date)} à ${fmtHM(iv.startH * 60 + iv.startM)}`
+    const newLabel = `${formatDate(dateStr)} à ${fmtHM(newH * 60 + newM)}`
+    const msg = `Bonjour ${iv.client},\nVotre rendez-vous (${iv.type}) prévu ${oldLabel} a été déplacé au ${newLabel}.\n\nÀ bientôt ! — Marc`
+    if (iv.phone) setSmsModal({ phone: iv.phone, client: iv.client, message: msg })
+  }
+
+  // ── Édition ───────────────────────────────────────────────────
+  function openEdit(iv: Intervention) {
+    setEditDate(iv.date)
+    setEditTime(`${String(iv.startH).padStart(2,'0')}:${String(iv.startM).padStart(2,'0')}`)
+    const durLabel = Object.entries(DURATIONS).find(([, v]) => v === iv.durationMin)?.[0] || '1h30'
+    setEditDuration(durLabel)
+    setEditMode(true)
+  }
+
+  function handleSaveEdit() {
+    if (!selectedIv) return
+    const [h, m]  = editTime.split(':').map(Number)
+    const newDur  = DURATIONS[editDuration] || 90
+    updateIntervention(selectedIv.id, { date: editDate, startH: h, startM: m, durationMin: newDur })
+    setAllInterventions(getInterventions())
+    const endMin = h * 60 + m + newDur
+    const msg = `Bonjour ${selectedIv.client},\nVotre rendez-vous (${selectedIv.type}) a été modifié :\n${formatDate(editDate)} à ${fmtHM(h * 60 + m)} — durée ${durationLabel(newDur)} (fin prévue vers ${fmtHM(endMin)}).\n\nÀ bientôt ! — Marc`
+    if (selectedIv.phone) setSmsModal({ phone: selectedIv.phone, client: selectedIv.client, message: msg })
+    setSelectedIv(null)
+    setEditMode(false)
+  }
+
+  // ── SMS ───────────────────────────────────────────────────────
+  function waUrl(phone: string, msg: string) {
+    return `https://wa.me/${phone.replace(/\s/g,'').replace(/^0/,'33')}?text=${encodeURIComponent(msg)}`
+  }
+  function smsUrl(phone: string, msg: string) {
+    return `sms:${phone.replace(/\s/g,'')}?body=${encodeURIComponent(msg)}`
+  }
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text).then(() => {
+      setSmsCopied(true); setTimeout(() => setSmsCopied(false), 2000)
+    })
+  }
 
   return (
     <div style={{ maxWidth: 1300, margin: '0 auto' }}>
@@ -155,24 +250,37 @@ export default function Planning() {
         </div>
       </div>
 
+      {/* Hint drag */}
+      {draggingId && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#111827', color: 'white', borderRadius: 10, padding: '10px 18px',
+          fontSize: 13, fontWeight: 600, zIndex: 999, pointerEvents: 'none',
+          boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+        }}>
+          Déposez sur le jour et l'heure souhaités
+        </div>
+      )}
+
       {/* Week grid */}
       <div style={{ background: 'white', borderRadius: 14, border: '1px solid #f0f0f0', overflow: 'hidden' }}>
 
         {/* Day header row */}
         <div style={{ display: 'grid', gridTemplateColumns: '52px repeat(7, 1fr)', borderBottom: '2px solid #f0f0f0' }}>
-          <div /> {/* vide au dessus des heures */}
+          <div />
           {WEEK_DAYS.map((day, i) => {
-            const dateStr  = getDayDateStr(i)
-            const dateObj  = getDayDate(i)
-            const isToday  = dateStr === todayStr
-            const count    = allInterventions.filter(iv => iv.date === dateStr).length
-            const done     = allInterventions.filter(iv => iv.date === dateStr && iv.status === 'done').length
+            const dateStr = getDayDateStr(i)
+            const dateObj = getDayDate(i)
+            const isToday = dateStr === todayStr
+            const count   = allInterventions.filter(iv => iv.date === dateStr).length
+            const done    = allInterventions.filter(iv => iv.date === dateStr && iv.status === 'done').length
 
             return (
               <div key={day} style={{
                 padding: '12px 6px', textAlign: 'center',
                 borderLeft: '1px solid #f0f0f0',
-                background: isToday ? '#fff7ed' : 'white',
+                background: dragOverDay === i ? '#eff6ff' : isToday ? '#fff7ed' : 'white',
+                transition: 'background 0.15s',
               }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: isToday ? '#f97316' : '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {day}
@@ -207,10 +315,7 @@ export default function Planning() {
             {/* Colonne heures */}
             <div style={{ position: 'relative', zIndex: 1 }}>
               {hours.map(h => (
-                <div key={h} style={{
-                  height: SLOT_HEIGHT, display: 'flex', alignItems: 'flex-start',
-                  paddingTop: 4,
-                }}>
+                <div key={h} style={{ height: SLOT_HEIGHT, display: 'flex', alignItems: 'flex-start', paddingTop: 4 }}>
                   <span style={{ fontSize: 11, color: '#9ca3af', fontWeight: 500, width: 44, textAlign: 'right', paddingRight: 8 }}>
                     {h}h
                   </span>
@@ -220,9 +325,9 @@ export default function Planning() {
 
             {/* 7 colonnes jours */}
             {WEEK_DAYS.map((_, dayIndex) => {
-              const dateStr  = getDayDateStr(dayIndex)
-              const isToday  = dateStr === todayStr
-              const dayIvs   = allInterventions
+              const dateStr = getDayDateStr(dayIndex)
+              const isToday = dateStr === todayStr
+              const dayIvs  = allInterventions
                 .filter(iv => iv.date === dateStr)
                 .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
 
@@ -233,63 +338,68 @@ export default function Planning() {
                     position: 'relative',
                     height: TOTAL_HOURS * SLOT_HEIGHT,
                     borderLeft: '1px solid #f3f4f6',
-                    background: isToday ? 'rgba(249,115,22,0.015)' : 'white',
+                    background: dragOverDay === dayIndex
+                      ? 'rgba(59,130,246,0.04)'
+                      : isToday ? 'rgba(249,115,22,0.015)' : 'white',
+                    transition: 'background 0.1s',
                   }}
+                  onDragOver={e => { e.preventDefault(); setDragOverDay(dayIndex) }}
+                  onDragLeave={() => setDragOverDay(null)}
+                  onDrop={e => handleDrop(e, dateStr)}
                 >
                   {/* Lignes d'heures */}
                   {hours.map(h => (
                     <div key={h} style={{
-                      position: 'absolute',
-                      top: (h - HOUR_START) * SLOT_HEIGHT,
-                      left: 0, right: 0, height: 1,
-                      background: '#f3f4f6',
+                      position: 'absolute', top: (h - HOUR_START) * SLOT_HEIGHT,
+                      left: 0, right: 0, height: 1, background: '#f3f4f6',
                     }} />
                   ))}
 
-                  {/* Zones cliquables pour ajouter */}
-                  {hours.slice(0, -1).map(h => (
+                  {/* Zones cliquables pour créer */}
+                  {!draggingId && hours.slice(0, -1).map(h => (
                     <div
                       key={h}
                       onClick={() => openModal(dateStr, h)}
                       style={{
                         position: 'absolute',
                         top: (h - HOUR_START) * SLOT_HEIGHT,
-                        left: 0, right: 0,
-                        height: SLOT_HEIGHT,
+                        left: 0, right: 0, height: SLOT_HEIGHT,
                         cursor: 'pointer', zIndex: 0,
                       }}
-                      title={`Ajouter une intervention à ${h}h`}
                     />
                   ))}
 
-                  {/* Ligne heure actuelle (uniquement aujourd'hui) */}
+                  {/* Heure actuelle */}
                   {isToday && nowInRange && (
                     <div style={{
-                      position: 'absolute',
-                      top: nowTop,
-                      left: 0, right: 0,
-                      height: 2, background: '#f97316',
-                      zIndex: 4, pointerEvents: 'none',
+                      position: 'absolute', top: nowTop, left: 0, right: 0,
+                      height: 2, background: '#f97316', zIndex: 4, pointerEvents: 'none',
                     }}>
-                      <div style={{
-                        width: 8, height: 8, borderRadius: '50%',
-                        background: '#f97316',
-                        position: 'absolute', left: -4, top: -3,
-                      }} />
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#f97316', position: 'absolute', left: -4, top: -3 }} />
                     </div>
                   )}
 
                   {/* Blocs d'intervention */}
                   {dayIvs.map(iv => {
-                    const top    = topOffset(iv.startH, iv.startM)
-                    const height = blockHeight(iv.durationMin)
-                    const endM   = iv.startH * 60 + iv.startM + iv.durationMin
+                    const top        = topOffset(iv.startH, iv.startM)
+                    const height     = blockHeight(iv.durationMin)
+                    const endM       = iv.startH * 60 + iv.startM + iv.durationMin
                     const isSelected = selectedIv?.id === iv.id
+                    const isDragging = draggingId === iv.id
 
                     return (
                       <div
                         key={iv.id}
-                        onClick={e => { e.stopPropagation(); setSelectedIv(isSelected ? null : iv) }}
+                        draggable
+                        onDragStart={e => handleDragStart(e, iv)}
+                        onDragEnd={handleDragEnd}
+                        onClick={e => {
+                          e.stopPropagation()
+                          if (!isDragging) {
+                            setSelectedIv(isSelected ? null : iv)
+                            setEditMode(false)
+                          }
+                        }}
                         style={{
                           position: 'absolute',
                           top: top + 1, left: 3, right: 3,
@@ -299,10 +409,13 @@ export default function Planning() {
                           borderLeft: `3px solid ${iv.typeColor}`,
                           borderRadius: 6,
                           padding: '3px 6px',
-                          cursor: 'pointer', zIndex: 2,
+                          cursor: isDragging ? 'grabbing' : 'grab',
+                          zIndex: 2,
                           overflow: 'hidden',
+                          opacity: isDragging ? 0.35 : 1,
                           boxShadow: isSelected ? `0 2px 8px rgba(0,0,0,0.15)` : '0 1px 3px rgba(0,0,0,0.05)',
-                          transition: 'box-shadow 0.15s',
+                          transition: 'box-shadow 0.15s, opacity 0.15s',
+                          userSelect: 'none',
                         }}
                       >
                         <div style={{ fontSize: 11.5, fontWeight: 700, color: '#111827', lineHeight: 1.3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -334,74 +447,129 @@ export default function Planning() {
         </div>
       </div>
 
-      {/* Modal détail intervention */}
+      {/* Modal détail / édition */}
       {selectedIv && (
-        <div className="modal-overlay" onClick={() => setSelectedIv(null)}>
-          <div className="modal-box" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+        <div className="modal-overlay" onClick={() => { setSelectedIv(null); setEditMode(false) }}>
+          <div className="modal-box" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
               <div>
                 <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{selectedIv.client}</div>
-                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>{selectedIv.date} · {selectedIv.durationMin} min</div>
+                <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                  {formatDate(selectedIv.date)} · {durationLabel(selectedIv.durationMin)}
+                </div>
               </div>
-              <button className="btn-ghost" onClick={() => setSelectedIv(null)} style={{ padding: 4 }}>
-                <X size={16} />
-              </button>
-            </div>
-
-            <div style={{
-              background: selectedIv.typeBg, border: `1px solid ${selectedIv.typeBorder}`,
-              borderRadius: 9, padding: '10px 14px', marginBottom: 16,
-              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: selectedIv.typeColor }}>{selectedIv.type}</span>
-              <span style={{
-                fontSize: 11.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px',
-                background: 'white', color: STATUS_CONFIG[selectedIv.status]?.color || '#6b7280',
-              }}>
-                {STATUS_CONFIG[selectedIv.status]?.label || selectedIv.status}
-              </span>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
-              {[
-                { icon: Clock,  text: `${selectedIv.startH}:${String(selectedIv.startM).padStart(2,'0')} – ${Math.floor((selectedIv.startH*60+selectedIv.startM+selectedIv.durationMin)/60)}:${String((selectedIv.startH*60+selectedIv.startM+selectedIv.durationMin)%60).padStart(2,'0')}` },
-                { icon: MapPin, text: selectedIv.address || 'Adresse non renseignée' },
-                { icon: Phone,  text: selectedIv.phone   || 'Téléphone non renseigné' },
-              ].map(({ icon: Ic, text }) => (
-                <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
-                  <Ic size={14} color="#9ca3af" style={{ flexShrink: 0, marginTop: 1 }} />
-                  <span style={{ fontSize: 13, color: '#374151' }}>{text}</span>
-                </div>
-              ))}
-              {selectedIv.notes && (
-                <div style={{ background: '#f5f6fa', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: '#6b7280' }}>
-                  {selectedIv.notes}
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {selectedIv.status !== 'done' && (
-                <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleCloturer(selectedIv)}>
-                  <CheckCircle size={14} /> Clôturer l'intervention
-                </button>
-              )}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
-                  onClick={() => { window.location.href = `tel:${selectedIv.phone.replace(/\s/g,'')}` }}>
-                  <Phone size={13} /> Appeler
-                </button>
-                <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
-                  onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedIv.address)}`, '_blank')}>
-                  <MapPin size={13} /> Itinéraire
+              <div style={{ display: 'flex', gap: 6 }}>
+                {!editMode && (
+                  <button
+                    className="btn-ghost"
+                    style={{ padding: '6px 10px', fontSize: 12, gap: 5 }}
+                    onClick={() => openEdit(selectedIv)}
+                  >
+                    <Edit2 size={13} /> Modifier
+                  </button>
+                )}
+                <button className="btn-ghost" onClick={() => { setSelectedIv(null); setEditMode(false) }} style={{ padding: 4 }}>
+                  <X size={16} />
                 </button>
               </div>
             </div>
+
+            {editMode ? (
+              /* ── Formulaire d'édition ── */
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{
+                  background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: 9,
+                  padding: '10px 14px', fontSize: 12.5, color: '#92400e',
+                  display: 'flex', alignItems: 'center', gap: 8
+                }}>
+                  <Edit2 size={13} color="#f97316" />
+                  Modifiez les informations puis enregistrez — un SMS de confirmation sera préparé.
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Date</label>
+                    <input className="input-field" type="date" value={editDate} onChange={e => setEditDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Heure de début</label>
+                    <input className="input-field" type="time" value={editTime} onChange={e => setEditTime(e.target.value)} />
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, color: '#374151', marginBottom: 5 }}>Durée estimée</label>
+                  <select className="select-field" value={editDuration} onChange={e => setEditDuration(e.target.value)}>
+                    {Object.keys(DURATIONS).map(k => <option key={k}>{k}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
+                  <button className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => setEditMode(false)}>Annuler</button>
+                  <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={handleSaveEdit}>
+                    <CheckCircle size={14} /> Enregistrer
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* ── Détail ── */
+              <>
+                <div style={{
+                  background: selectedIv.typeBg, border: `1px solid ${selectedIv.typeBorder}`,
+                  borderRadius: 9, padding: '10px 14px', marginBottom: 16,
+                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: selectedIv.typeColor }}>{selectedIv.type}</span>
+                  <span style={{
+                    fontSize: 11.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px',
+                    background: 'white', color: STATUS_CONFIG[selectedIv.status]?.color || '#6b7280',
+                  }}>
+                    {STATUS_CONFIG[selectedIv.status]?.label || selectedIv.status}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+                  {[
+                    { icon: Clock,  text: `${selectedIv.startH}:${String(selectedIv.startM).padStart(2,'0')} – ${fmtHM(selectedIv.startH*60+selectedIv.startM+selectedIv.durationMin)} (${durationLabel(selectedIv.durationMin)})` },
+                    { icon: MapPin, text: selectedIv.address || 'Adresse non renseignée' },
+                    { icon: Phone,  text: selectedIv.phone   || 'Téléphone non renseigné' },
+                  ].map(({ icon: Ic, text }) => (
+                    <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                      <Ic size={14} color="#9ca3af" style={{ flexShrink: 0, marginTop: 1 }} />
+                      <span style={{ fontSize: 13, color: '#374151' }}>{text}</span>
+                    </div>
+                  ))}
+                  {selectedIv.notes && (
+                    <div style={{ background: '#f5f6fa', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: '#6b7280' }}>
+                      {selectedIv.notes}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {selectedIv.status !== 'done' && (
+                    <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleCloturer(selectedIv)}>
+                      <CheckCircle size={14} /> Clôturer l'intervention
+                    </button>
+                  )}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                    <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
+                      onClick={() => { window.location.href = `tel:${selectedIv.phone.replace(/\s/g,'')}` }}>
+                      <Phone size={13} /> Appeler
+                    </button>
+                    <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
+                      onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedIv.address)}`, '_blank')}>
+                      <MapPin size={13} /> Itinéraire
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* Modal création intervention */}
+      {/* Modal création */}
       {showModal && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
@@ -409,7 +577,6 @@ export default function Planning() {
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#111827' }}>Nouvelle intervention</h2>
               <button className="btn-ghost" onClick={() => setShowModal(false)} style={{ padding: 4 }}><X size={18} /></button>
             </div>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div>
                 <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Client *</label>
@@ -437,22 +604,13 @@ export default function Planning() {
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Type</label>
                   <select className="select-field" value={formType} onChange={e => setFormType(e.target.value)}>
-                    <option>Fuite</option>
-                    <option>Chauffe-eau</option>
-                    <option>Débouchage</option>
-                    <option>Entretien</option>
-                    <option>Rénovation</option>
-                    <option>Robinetterie</option>
+                    {Object.keys(TYPE_COLORS).filter(k => !k.includes("'")).map(t => <option key={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
                   <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>Durée</label>
                   <select className="select-field" value={formDuration} onChange={e => setFormDuration(e.target.value)}>
-                    <option>30 min</option>
-                    <option>1 heure</option>
-                    <option>1h30</option>
-                    <option>2 heures</option>
-                    <option>3 heures</option>
+                    {Object.keys(DURATIONS).map(k => <option key={k}>{k}</option>)}
                   </select>
                 </div>
               </div>
@@ -463,6 +621,87 @@ export default function Planning() {
                   Créer
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal SMS */}
+      {smsModal && (
+        <div className="modal-overlay" onClick={() => setSmsModal(null)}>
+          <div className="modal-box" style={{ maxWidth: 440 }} onClick={e => e.stopPropagation()}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: 9,
+                  background: 'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                  <MessageCircle size={18} color="white" />
+                </div>
+                <div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>Prévenir le client</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af' }}>{smsModal.client} · {smsModal.phone}</div>
+                </div>
+              </div>
+              <button className="btn-ghost" onClick={() => setSmsModal(null)} style={{ padding: 4 }}><X size={16} /></button>
+            </div>
+
+            <div style={{
+              background: '#f5f6fa', borderRadius: 10, padding: '14px 16px',
+              fontSize: 13.5, color: '#374151', lineHeight: 1.65, marginBottom: 18,
+              whiteSpace: 'pre-wrap', border: '1px solid #e5e7eb',
+            }}>
+              {smsModal.message}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <a
+                href={waUrl(smsModal.phone, smsModal.message)}
+                target="_blank" rel="noopener noreferrer"
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  background: '#25d366', color: 'white', borderRadius: 10,
+                  padding: '12px 20px', textDecoration: 'none',
+                  fontSize: 14, fontWeight: 700,
+                  boxShadow: '0 4px 12px rgba(37,211,102,0.3)',
+                }}
+              >
+                <MessageCircle size={17} /> Envoyer via WhatsApp
+              </a>
+              <a
+                href={smsUrl(smsModal.phone, smsModal.message)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  background: '#3b82f6', color: 'white', borderRadius: 10,
+                  padding: '12px 20px', textDecoration: 'none',
+                  fontSize: 14, fontWeight: 700,
+                }}
+              >
+                <Phone size={17} /> Envoyer par SMS
+              </a>
+              <button
+                onClick={() => handleCopy(smsModal.message)}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9,
+                  background: smsCopied ? '#f0fdf4' : '#f5f6fa',
+                  color: smsCopied ? '#16a34a' : '#374151',
+                  border: `1.5px solid ${smsCopied ? '#a7f3d0' : '#e5e7eb'}`,
+                  borderRadius: 10, padding: '12px 20px',
+                  fontSize: 14, fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                <Copy size={16} /> {smsCopied ? 'Copié !' : 'Copier le message'}
+              </button>
+              <button
+                onClick={() => setSmsModal(null)}
+                style={{
+                  background: 'none', border: 'none', color: '#9ca3af',
+                  fontSize: 13, cursor: 'pointer', padding: '6px 0',
+                }}
+              >
+                Passer — ne pas prévenir le client
+              </button>
             </div>
           </div>
         </div>

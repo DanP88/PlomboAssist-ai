@@ -164,6 +164,15 @@ export function addIntervention(iv: Omit<Intervention, 'id'>): Intervention {
   return newIv
 }
 
+export function updateIntervention(id: string, fields: Partial<Omit<Intervention, 'id'>>) {
+  const all = getInterventions()
+  const idx = all.findIndex(iv => iv.id === id)
+  if (idx >= 0) {
+    all[idx] = { ...all[idx], ...fields }
+    saveInterventions(all)
+  }
+}
+
 export function updateStatus(id: string, status: Intervention['status'], finishedAt?: string) {
   const all = getInterventions()
   const idx = all.findIndex(iv => iv.id === id)
