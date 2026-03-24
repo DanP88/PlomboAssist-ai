@@ -25,6 +25,7 @@ const kpis = [
     bg: 'linear-gradient(135deg, #fff7ed, #ffedd5)',
     border: '#fed7aa',
     iconBg: '#f97316',
+    path: '/factures',
   },
   {
     label: 'Devis en attente',
@@ -36,6 +37,7 @@ const kpis = [
     bg: 'linear-gradient(135deg, #eff6ff, #dbeafe)',
     border: '#bfdbfe',
     iconBg: '#3b82f6',
+    path: '/devis',
   },
   {
     label: 'Factures impayées',
@@ -48,6 +50,7 @@ const kpis = [
     border: '#fecaca',
     iconBg: '#ef4444',
     alert: true,
+    path: '/factures',
   },
   {
     label: 'Appels IA traités',
@@ -59,6 +62,7 @@ const kpis = [
     bg: 'linear-gradient(135deg, #f0fdf4, #dcfce7)',
     border: '#a7f3d0',
     iconBg: '#10b981',
+    path: '/demandes',
   },
 ]
 
@@ -281,7 +285,7 @@ export default function Dashboard() {
         {kpis.map((kpi) => {
           const Icon = kpi.icon
           return (
-            <div key={kpi.label} style={{
+            <div key={kpi.label} onClick={() => navigate(kpi.path)} style={{
               background: kpi.bg,
               border: `1.5px solid ${kpi.border}`,
               borderRadius: 14,
@@ -366,7 +370,7 @@ export default function Dashboard() {
                 const endStr  = fmtTime(Math.floor(endTotalM / 60) % 24, endTotalM % 60)
 
                 return (
-                  <div key={iv.id} style={{
+                  <div key={iv.id} onClick={() => navigate('/planning')} style={{
                     display: 'flex', alignItems: 'center', gap: 14,
                     padding: '12px 14px',
                     background: '#fafafa',
@@ -489,10 +493,14 @@ export default function Dashboard() {
                 }
                 const uc = urgColors[c.urgency]
                 return (
-                  <div key={c.id} style={{
+                  <div key={c.id} onClick={() => navigate('/demandes')} style={{
                     padding: '11px 13px', borderRadius: 10,
                     border: '1px solid #f0f0f0', background: '#fafafa',
-                  }}>
+                    cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                    onMouseEnter={e => (e.currentTarget.style.background = '#f5f6fa')}
+                    onMouseLeave={e => (e.currentTarget.style.background = '#fafafa')}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 5 }}>
                       <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111827' }}>{c.name}</span>
                       <span style={{ fontSize: 10.5, fontWeight: 700, color: uc.color, background: uc.bg, padding: '2px 7px', borderRadius: 8 }}>{c.urgency}</span>

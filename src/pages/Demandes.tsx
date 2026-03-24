@@ -119,6 +119,7 @@ export default function Demandes() {
   const [selectedId, setSelectedId] = useState<number | null>(1)
   const [demandesList, setDemandesList] = useState(allDemandes)
   const [toast, setToast] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const [showPlanif, setShowPlanif] = useState(false)
   const [planifForm, setPlanifForm] = useState({
     date: '', heure: '09:00', duree: '60', technicien: 'Marc Lefebvre',
@@ -146,12 +147,14 @@ export default function Demandes() {
   }
 
   const filtered = demandesList.filter(d => {
-    if (activeTab === 'all') return true
-    if (activeTab === 'new') return d.status === 'new'
-    if (activeTab === 'urgent') return d.urgency === 1
-    if (activeTab === 'converted') return d.status === 'converted'
-    if (activeTab === 'closed') return d.status === 'closed'
-    return true
+    const matchTab =
+      activeTab === 'all' ? true :
+      activeTab === 'new' ? d.status === 'new' :
+      activeTab === 'urgent' ? d.urgency === 1 :
+      activeTab === 'converted' ? d.status === 'converted' :
+      activeTab === 'closed' ? d.status === 'closed' : true
+    const matchType = !typeFilter || d.problemType === typeFilter
+    return matchTab && matchType
   })
 
   const selected = demandesList.find(d => d.id === selectedId)
@@ -402,13 +405,23 @@ export default function Demandes() {
                       <div style={{ fontSize: 11.5, color: '#9ca3af' }}>{d.timeAgo} · {d.duration}</div>
                     </div>
                   </div>
-                  <span style={{
-                    fontSize: 10.5, fontWeight: 700,
-                    color: uc.color, background: uc.bg,
-                    padding: '2px 7px', borderRadius: 8,
-                    border: `1px solid ${uc.border}`,
-                    flexShrink: 0, marginLeft: 4
-                  }}>{uc.label}</span>
+                  <span
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (d.urgency === 1) setActiveTab('urgent')
+                      else if (d.status === 'converted') setActiveTab('converted')
+                      else if (d.status === 'closed') setActiveTab('closed')
+                      else setActiveTab('new')
+                    }}
+                    title="Cliquer pour filtrer"
+                    style={{
+                      fontSize: 10.5, fontWeight: 700,
+                      color: uc.color, background: uc.bg,
+                      padding: '2px 7px', borderRadius: 8,
+                      border: `1px solid ${uc.border}`,
+                      flexShrink: 0, marginLeft: 4, cursor: 'pointer',
+                    }}
+                  >{uc.label}</span>
                 </div>
 
                 <div style={{ fontSize: 12.5, color: '#6b7280', marginBottom: 8, lineHeight: 1.4 }}>
@@ -416,11 +429,21 @@ export default function Demandes() {
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{
-                    fontSize: 11, fontWeight: 600,
-                    background: '#f5f6fa', color: '#374151',
-                    padding: '2px 8px', borderRadius: 7
-                  }}>{d.problemType}</span>
+                  <span
+                    onClick={e => {
+                      e.stopPropagation()
+                      setTypeFilter(prev => prev === d.problemType ? '' : d.problemType)
+                      setActiveTab('all')
+                    }}
+                    title={typeFilter === d.problemType ? 'Cliquer pour annuler le filtre' : 'Cliquer pour filtrer par type'}
+                    style={{
+                      fontSize: 11, fontWeight: 600,
+                      background: typeFilter === d.problemType ? '#eff6ff' : '#f5f6fa',
+                      color: typeFilter === d.problemType ? '#2563eb' : '#374151',
+                      border: typeFilter === d.problemType ? '1px solid #bfdbfe' : '1px solid transparent',
+                      padding: '2px 8px', borderRadius: 7, cursor: 'pointer',
+                    }}
+                  >{d.problemType}</span>
                   <span style={{ fontSize: 11.5, color: '#9ca3af' }}>
                     <MapPin size={10} style={{ verticalAlign: 'middle', marginRight: 2 }} />
                     {d.address.split(',')[1]?.trim()}

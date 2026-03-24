@@ -257,11 +257,20 @@ export default function Factures() {
                       )}
                     </td>
                     <td style={{ padding: '13px 16px' }}>
-                      <span style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 5,
-                        fontSize: 12, fontWeight: 600, color: sc.color, background: sc.bg,
-                        padding: '4px 10px', borderRadius: 8, border: `1px solid ${sc.border}`
-                      }}>
+                      <span
+                        onClick={e => {
+                          e.stopPropagation()
+                          const tab: Tab = f.status === 'paid' ? 'paid' : f.status === 'overdue' ? 'overdue' : 'unpaid'
+                          setActiveTab(tab)
+                        }}
+                        title="Cliquer pour filtrer"
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          fontSize: 12, fontWeight: 600, color: sc.color, background: sc.bg,
+                          padding: '4px 10px', borderRadius: 8, border: `1px solid ${sc.border}`,
+                          cursor: 'pointer',
+                        }}
+                      >
                         <StatusIcon size={12} />
                         {sc.label}
                       </span>
