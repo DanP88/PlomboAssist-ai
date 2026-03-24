@@ -514,7 +514,7 @@ export default function Demandes() {
               <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '12px' }} onClick={openPlanif}>
                 <Calendar size={16} /> Planifier l'intervention
               </button>
-              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => navigate('/devis', { state: { openCreate: true, client: selected?.name } })}>
+              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center', padding: '11px' }} onClick={() => navigate('/devis', { state: { openCreate: true, client: selected?.name, problemType: selected?.problemType, urgency: selected?.urgency } })}>
                 <FileText size={15} /> Créer un devis
               </button>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

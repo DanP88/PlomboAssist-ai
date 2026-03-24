@@ -5,6 +5,7 @@ import {
   Eye, ChevronRight, Euro, TrendingUp, Search, Filter,
   X, Trash2, Bot, Check
 } from 'lucide-react'
+import { getTarifMode, getTarif, TARIF_MODE_LABELS } from '../lib/tarification'
 
 type DevisStatus = 'draft' | 'sent' | 'viewed' | 'accepted' | 'refused' | 'expired'
 
@@ -89,16 +90,76 @@ const prestationLib = [
 
 type LineItem = { id: string; name: string; qty: number; price: number; unit: string }
 
+interface LocationState {
+  openCreate?: boolean
+  client?: string
+  problemType?: string
+  urgency?: number
+}
+
+// Mapping type d'intervention → prestations suggérées
+const PROBLEM_TO_PRESTS: Record<string, string[]> = {
+  'Chauffe-eau':  ['p8'],
+  'Fuite':        ['p4'],
+  "Fuite d'eau":  ['p4'],
+  'Débouchage':   ['p6'],
+  'Robinetterie': ['p3'],
+  'Entretien':    ['p9'],
+  'Rénovation':   ['p12'],
+}
+
+function buildInitialLines(problemType?: string, urgency?: number): LineItem[] {
+  const result: LineItem[] = []
+
+  // Prestations liées au type d'intervention
+  const prestIds = (problemType && PROBLEM_TO_PRESTS[problemType]) || []
+  for (const pid of prestIds) {
+    const p = prestationLib.find(x => x.id === pid)
+    if (p) result.push({ id: p.id, name: p.name, qty: 1, price: p.price, unit: p.unit })
+  }
+
+  // Déplacement : urgence si la demande est urgente (urgency 1), sinon standard
+  const deplId = urgency === 1 ? 'p11' : 'p10'
+  const depl = prestationLib.find(p => p.id === deplId)
+  if (depl) result.push({ id: depl.id, name: depl.name, qty: 1, price: depl.price, unit: depl.unit })
+
+  // Majorations selon le mode tarifaire actif
+  const mode = getTarifMode()
+  const config = getTarif()
+  const majorLabels: string[] = []
+  let majPct = 0
+
+  if (mode.includes('urgence')) { majPct += config.majorUrgence; majorLabels.push(`Urgence +${config.majorUrgence}%`) }
+  if (mode.includes('week-end')) { majPct += config.majorWeekend; majorLabels.push(`Week-end +${config.majorWeekend}%`) }
+  if (mode === 'soir' || mode === 'urgence-soir') { majPct += config.majorNuit; majorLabels.push(`Nuit +${config.majorNuit}%`) }
+
+  if (majPct > 0 && result.length > 0) {
+    const baseTotal = result.reduce((s, l) => s + l.price, 0)
+    const majAmount = Math.round(baseTotal * majPct / 100)
+    result.push({
+      id: 'custom-maj',
+      name: `Majoration ${majorLabels.join(' + ')}`,
+      qty: 1, price: majAmount, unit: 'forfait',
+    })
+  }
+
+  return result
+}
+
 export default function Devis() {
   const navigate = useNavigate()
   const location = useLocation()
-  const locationState = location.state as { openCreate?: boolean; client?: string } | null
+  const locationState = location.state as LocationState | null
   const [activeTab, setActiveTab] = useState<Tab>('all')
   const [showCreate, setShowCreate] = useState(locationState?.openCreate === true)
   const [clientPrefill, setClientPrefill] = useState(locationState?.client ?? '')
   const [search, setSearch] = useState('')
   const [prestSearch, setPrestSearch] = useState('')
-  const [lines, setLines] = useState<LineItem[]>([])
+  const [lines, setLines] = useState<LineItem[]>(() =>
+    locationState?.problemType
+      ? buildInitialLines(locationState.problemType, locationState.urgency)
+      : []
+  )
   const [relanceId, setRelanceId] = useState<number | null>(null)
   const [viewDevis, setViewDevis] = useState<typeof allDevis[0] | null>(null)
   const [pdfToast, setPdfToast] = useState(false)
@@ -485,17 +546,37 @@ export default function Devis() {
 
             <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px' }}>
               {/* IA suggestion banner */}
-              <div style={{
-                background: 'linear-gradient(135deg, #1e293b, #0f172a)',
-                borderRadius: 10, padding: '12px 16px', marginBottom: 18,
-                display: 'flex', alignItems: 'center', gap: 10
-              }}>
-                <Bot size={16} color="#fb923c" />
-                <span style={{ fontSize: 13, color: '#cbd5e1' }}>
-                  Suggestion IA basée sur l'appel de M. Bernard :
-                  <span style={{ color: '#fb923c', fontWeight: 600 }}> Chauffe-eau 200L + déplacement urgence</span>
-                </span>
-              </div>
+              {locationState?.problemType ? (
+                <div style={{
+                  background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                  borderRadius: 10, padding: '12px 16px', marginBottom: 18,
+                  display: 'flex', alignItems: 'flex-start', gap: 10
+                }}>
+                  <Bot size={16} color="#fb923c" style={{ flexShrink: 0, marginTop: 2 }} />
+                  <div>
+                    <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 3 }}>
+                      <span style={{ color: '#fb923c', fontWeight: 700 }}>Pré-rempli automatiquement</span>
+                      {locationState.client && <span style={{ color: '#94a3b8' }}> · {locationState.client}</span>}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#64748b', display: 'flex', flexWrap: 'wrap', gap: '4px 12px' }}>
+                      <span>Type : <span style={{ color: '#94a3b8' }}>{locationState.problemType}</span></span>
+                      <span>Mode tarifaire : <span style={{ color: '#94a3b8' }}>{TARIF_MODE_LABELS[getTarifMode()]}</span></span>
+                      {locationState.urgency === 1 && <span style={{ color: '#f87171', fontWeight: 600 }}>⚡ Déplacement urgence</span>}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+                  borderRadius: 10, padding: '12px 16px', marginBottom: 18,
+                  display: 'flex', alignItems: 'center', gap: 10
+                }}>
+                  <Bot size={16} color="#fb923c" />
+                  <span style={{ fontSize: 13, color: '#cbd5e1' }}>
+                    Ajoutez les prestations depuis la bibliothèque ci-dessous
+                  </span>
+                </div>
+              )}
 
               {/* Client */}
               <div style={{ marginBottom: 16 }}>
@@ -562,8 +643,11 @@ export default function Devis() {
                     Lignes du devis
                   </div>
                   {lines.map(l => (
-                    <div key={l.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid #f5f5f5' }}>
-                      <span style={{ flex: 1, fontSize: 13.5, color: '#374151' }}>{l.name}</span>
+                    <div key={l.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderBottom: '1px solid #f5f5f5',
+                      background: l.id === 'custom-maj' ? '#fff7ed' : 'white',
+                    }}>
+                      <span style={{ flex: 1, fontSize: 13.5, color: l.id === 'custom-maj' ? '#92400e' : '#374151', fontWeight: l.id === 'custom-maj' ? 600 : 400 }}>{l.name}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <button onClick={() => setLines(prev => prev.map(x => x.id === l.id ? { ...x, qty: Math.max(1, x.qty - 1) } : x))}
                           style={{ width: 24, height: 24, border: '1px solid #e5e7eb', borderRadius: 5, background: 'white', cursor: 'pointer', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>-</button>
