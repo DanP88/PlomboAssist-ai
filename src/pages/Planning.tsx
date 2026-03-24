@@ -8,7 +8,7 @@ import {
   updateIntervention, Intervention
 } from '../lib/agenda'
 import { formatDate } from '../lib/tarification'
-import { getWorkPlanning, WorkDay } from '../lib/planning'
+import { getWorkPlanning, WorkDay, localDateStr } from '../lib/planning'
 
 const HOUR_START  = 0
 const HOUR_END    = 24
@@ -99,7 +99,7 @@ export default function Planning() {
   }, [weekOffset])
 
   const today     = new Date()
-  const todayStr  = today.toISOString().split('T')[0]
+  const todayStr  = localDateStr(today)
   const weekStart = new Date(today)
   weekStart.setDate(today.getDate() - ((today.getDay() + 6) % 7) + weekOffset * 7)
   weekStart.setHours(0, 0, 0, 0)
@@ -107,7 +107,7 @@ export default function Planning() {
   function getDayDateStr(i: number) {
     const d = new Date(weekStart)
     d.setDate(weekStart.getDate() + i)
-    return d.toISOString().split('T')[0]
+    return localDateStr(d)
   }
   function getDayDate(i: number) {
     const d = new Date(weekStart)
@@ -439,7 +439,7 @@ export default function Planning() {
                     // Jour précédent : peut déborder sur ce jour si endH > 24
                     const prevDate = new Date(weekStart)
                     prevDate.setDate(weekStart.getDate() + dayIndex - 1)
-                    const prevDateStr2 = prevDate.toISOString().split('T')[0]
+                    const prevDateStr2 = localDateStr(prevDate)
                     const prevWd = workPlan.find(d => d.date === prevDateStr2)
 
                     // Construire les fenêtres de travail en minutes depuis minuit

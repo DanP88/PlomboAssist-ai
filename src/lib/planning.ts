@@ -9,6 +9,15 @@ export interface WorkDay {
 
 const KEY = 'plombo_planning'
 
+/** Date locale YYYY-MM-DD sans décalage UTC (corrige le bug fuseau horaire). */
+export function localDateStr(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 export function buildDefaultDays(numDays = 14): WorkDay[] {
   const days: WorkDay[] = []
   const now = new Date()
@@ -19,7 +28,7 @@ export function buildDefaultDays(numDays = 14): WorkDay[] {
     const dow = d.getDay()
     const weekend = dow === 0 || dow === 6
     days.push({
-      date: d.toISOString().split('T')[0],
+      date: localDateStr(d),   // ← date locale, pas UTC
       active: !weekend,
       startH: 8, startM: 0,
       endH: 18, endM: 0,
@@ -29,7 +38,7 @@ export function buildDefaultDays(numDays = 14): WorkDay[] {
 }
 
 export function getWorkPlanning(): WorkDay[] {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localDateStr(new Date())
   const stored = localStorage.getItem(KEY)
 
   if (!stored) {
@@ -39,6 +48,19 @@ export function getWorkPlanning(): WorkDay[] {
   }
 
   const data: WorkDay[] = JSON.parse(stored)
+
+  // Si les dates stockées ne sont pas au bon format local (ex : décalage UTC ancien),
+  // on reconstruit le planning depuis zéro.
+  const hasToday = data.some(d => d.date === todayStr)
+  const firstDate = data[0]?.date ?? ''
+  const dayDiff = firstDate
+    ? Math.abs(new Date(firstDate + 'T12:00:00').getTime() - new Date(todayStr + 'T12:00:00').getTime()) / 86_400_000
+    : 999
+  if (!hasToday && dayDiff > 14) {
+    const fresh = buildDefaultDays()
+    localStorage.setItem(KEY, JSON.stringify(fresh))
+    return fresh
+  }
   const existing = new Set(data.map(d => d.date))
   const fresh = buildDefaultDays()
   const toAdd = fresh.filter(d => !existing.has(d.date) && d.date >= todayStr)

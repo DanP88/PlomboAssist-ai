@@ -1,5 +1,5 @@
 import { getInterventions } from './agenda'
-import { getWorkPlanning } from './planning'
+import { getWorkPlanning, localDateStr } from './planning'
 
 export interface TarifConfig {
   trajetDefaut: number       // minutes de trajet estimés (défaut 20)
@@ -119,7 +119,7 @@ export function findBestSlot(
   const all = getInterventions()
   const now = new Date()
   let skipUntilMin = afterSlot
-    ? (afterSlot.date === now.toISOString().split('T')[0]
+    ? (afterSlot.date === localDateStr(now)
         ? afterSlot.startH * 60 + afterSlot.startM + repairDuration + pad
         : 0)
     : 0
@@ -129,13 +129,13 @@ export function findBestSlot(
     const d = new Date(now)
     d.setDate(d.getDate() + dayOffset)
     d.setHours(0, 0, 0, 0)
-    const dateStr = d.toISOString().split('T')[0]
+    const dateStr = localDateStr(d)
 
     // Heures de travail : fenêtres disponibles sur ce jour
     // (prend en compte les débords nuit du jour précédent)
     const workDay = planning.find(wd => wd.date === dateStr)
     const prevD = new Date(d); prevD.setDate(d.getDate() - 1)
-    const prevDateStr = prevD.toISOString().split('T')[0]
+    const prevDateStr = localDateStr(prevD)
     const prevDay = planning.find(wd => wd.date === prevDateStr)
 
     // Fenêtres en minutes depuis minuit pour ce jour

@@ -1,3 +1,12 @@
+/** Date locale YYYY-MM-DD sans décalage UTC (corrige le bug fuseau horaire). */
+function localDateStr(d: Date): string {
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, '0'),
+    String(d.getDate()).padStart(2, '0'),
+  ].join('-')
+}
+
 export interface Intervention {
   id: string
   date: string          // YYYY-MM-DD
@@ -53,7 +62,7 @@ function buildDemoWeek(): Intervention[] {
   const dayStr = (offset: number) => {
     const d = new Date(now)
     d.setDate(d.getDate() + offset)
-    return d.toISOString().split('T')[0]
+    return localDateStr(d)
   }
 
   const dow = now.getDay() // 0=dim, 6=sam
@@ -125,7 +134,7 @@ function buildDemoWeek(): Intervention[] {
 /** Recharge les données de démo une fois par jour.
  *  Les interventions créées par le pro (id non préfixés "demo-") sont préservées. */
 export function getInterventions(): Intervention[] {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localDateStr(new Date())
   const lastReset = localStorage.getItem('plombo_demo_reset')
   const stored = localStorage.getItem('plombo_agenda')
 
@@ -150,7 +159,7 @@ export function saveInterventions(list: Intervention[]) {
 }
 
 export function getTodayInterventions(): Intervention[] {
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = localDateStr(new Date())
   return getInterventions()
     .filter(iv => iv.date === todayStr)
     .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
