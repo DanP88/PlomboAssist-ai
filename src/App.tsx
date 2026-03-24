@@ -1,5 +1,15 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+
+// Version du schéma localStorage — incrémenter pour forcer une remise à zéro propre
+const STORAGE_VERSION = '2'
+
+function migrateStorage() {
+  if (localStorage.getItem('plombo_version') === STORAGE_VERSION) return
+  // Purge des clés susceptibles d'avoir des dates UTC décalées
+  ;['plombo_agenda', 'plombo_demo_reset', 'plombo_planning'].forEach(k => localStorage.removeItem(k))
+  localStorage.setItem('plombo_version', STORAGE_VERSION)
+}
 import DashboardLayout from './components/DashboardLayout'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
@@ -15,6 +25,8 @@ import SaisieMateriaux from './pages/SaisieMateriaux'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+
+  useEffect(() => { migrateStorage() }, [])
 
   return (
     <BrowserRouter>
