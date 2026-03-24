@@ -74,6 +74,8 @@ export default function Planning() {
   const [smsModal, setSmsModal]                 = useState<SmsModal | null>(null)
   const [smsCopied, setSmsCopied]               = useState(false)
   const dragOffsetRef                           = useRef(0)
+  const scrollRef                               = useRef<HTMLDivElement>(null)
+  const [scrollTop, setScrollTop]               = useState(8 * SLOT_HEIGHT)
 
   // Champs du formulaire de création
   const [formClient,   setFormClient]   = useState('')
@@ -87,6 +89,14 @@ export default function Planning() {
   const [workPlan] = useState<WorkDay[]>(getWorkPlanning)
 
   useEffect(() => { setAllInterventions(getInterventions()) }, [])
+
+  // Centrer sur 8h au chargement et à chaque changement de semaine
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+    el.scrollTop = 8 * SLOT_HEIGHT
+    setScrollTop(8 * SLOT_HEIGHT)
+  }, [weekOffset])
 
   const today     = new Date()
   const todayStr  = today.toISOString().split('T')[0]
@@ -111,6 +121,21 @@ export default function Planning() {
   const weekTotal   = WEEK_DAYS.reduce((sum, _, i) => sum + allInterventions.filter(iv => iv.date === getDayDateStr(i)).length, 0)
   const weekDone    = WEEK_DAYS.reduce((sum, _, i) => sum + allInterventions.filter(iv => iv.date === getDayDateStr(i) && iv.status === 'done').length, 0)
   const weekLabel   = weekStart.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  // Compter les RDV hors zone visible (pour les badges de défilement)
+  const containerH = scrollRef.current?.clientHeight ?? 600
+  let hiddenAbove = 0, hiddenBelow = 0
+  for (let i = 0; i < 7; i++) {
+    const ds = getDayDateStr(i)
+    allInterventions
+      .filter(iv => iv.date === ds && iv.status !== 'cancelled')
+      .forEach(iv => {
+        const top = topOffset(iv.startH, iv.startM)
+        const bot = top + blockHeight(iv.durationMin)
+        if (bot <= scrollTop) hiddenAbove++
+        else if (top >= scrollTop + containerH) hiddenBelow++
+      })
+  }
 
   // ── Création ─────────────────────────────────────────────────
   function openModal(dateStr?: string, hour?: number) {
@@ -312,7 +337,57 @@ export default function Planning() {
         </div>
 
         {/* Scrollable body */}
-        <div style={{ overflowY: 'auto', maxHeight: '65vh' }}>
+        <div style={{ position: 'relative' }}>
+
+          {/* Badge — RDV au-dessus de la zone visible */}
+          {hiddenAbove > 0 && (
+            <div
+              onClick={() => scrollRef.current?.scrollBy({ top: -200, behavior: 'smooth' })}
+              style={{
+                position: 'absolute', top: 0, left: 0, right: 0, zIndex: 20,
+                display: 'flex', justifyContent: 'center', paddingTop: 4,
+                background: 'linear-gradient(to bottom, rgba(255,255,255,0.96) 60%, transparent)',
+                cursor: 'pointer', pointerEvents: 'auto',
+              }}
+            >
+              <span style={{
+                background: '#f97316', color: 'white', borderRadius: 20,
+                padding: '3px 12px', fontSize: 11.5, fontWeight: 700,
+                boxShadow: '0 2px 6px rgba(249,115,22,0.35)',
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                ↑ {hiddenAbove} RDV non visible{hiddenAbove > 1 ? 's' : ''} — défiler vers le haut
+              </span>
+            </div>
+          )}
+
+          {/* Badge — RDV en-dessous de la zone visible */}
+          {hiddenBelow > 0 && (
+            <div
+              onClick={() => scrollRef.current?.scrollBy({ top: 200, behavior: 'smooth' })}
+              style={{
+                position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+                display: 'flex', justifyContent: 'center', paddingBottom: 4,
+                background: 'linear-gradient(to top, rgba(255,255,255,0.96) 60%, transparent)',
+                cursor: 'pointer', pointerEvents: 'auto',
+              }}
+            >
+              <span style={{
+                background: '#f97316', color: 'white', borderRadius: 20,
+                padding: '3px 12px', fontSize: 11.5, fontWeight: 700,
+                boxShadow: '0 2px 6px rgba(249,115,22,0.35)',
+                display: 'flex', alignItems: 'center', gap: 5,
+              }}>
+                ↓ {hiddenBelow} RDV non visible{hiddenBelow > 1 ? 's' : ''} — défiler vers le bas
+              </span>
+            </div>
+          )}
+
+        <div
+          ref={scrollRef}
+          onScroll={e => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}
+          style={{ overflowY: 'auto', maxHeight: '65vh' }}
+        >
           <div style={{ display: 'grid', gridTemplateColumns: '52px repeat(7, 1fr)', position: 'relative' }}>
 
             {/* Colonne heures */}
@@ -510,6 +585,7 @@ export default function Planning() {
             })}
           </div>
         </div>
+        </div> {/* fin wrapper badges */}
       </div>
 
       {/* Modal détail / édition */}
