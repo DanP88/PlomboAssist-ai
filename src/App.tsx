@@ -22,6 +22,9 @@ import AssistantIA from './pages/AssistantIA'
 import Parametres from './pages/Parametres'
 import Stock from './pages/Stock'
 import SaisieMateriaux from './pages/SaisieMateriaux'
+import RapportIntervention from './pages/RapportIntervention'
+import Statistiques from './pages/Statistiques'
+import AttestationTVA from './pages/AttestationTVA'
 
 export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
@@ -57,6 +60,9 @@ export default function App() {
           <Route path="saisie-materiaux" element={<SaisieMateriaux />} />
           <Route path="assistant-ia" element={<AssistantIA />} />
           <Route path="parametres" element={<Parametres />} />
+          <Route path="rapport" element={<RapportIntervention />} />
+          <Route path="statistiques" element={<Statistiques />} />
+          <Route path="attestation-tva" element={<AttestationTVA />} />
         </Route>
         <Route path="*" element={<Navigate to={isAuthenticated ? '/' : '/login'} />} />
       </Routes>

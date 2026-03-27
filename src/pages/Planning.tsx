@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Plus, MapPin, Clock,
-  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy, Trash2
+  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy, Trash2, ClipboardList
 } from 'lucide-react'
 import {
   addIntervention, getInterventions, updateStatus,
@@ -62,6 +63,7 @@ function durationLabel(min: number) {
 interface SmsModal { phone: string; client: string; message: string }
 
 export default function Planning() {
+  const navigate = useNavigate()
   const [weekOffset, setWeekOffset]             = useState(0)
   const [allInterventions, setAllInterventions] = useState<Intervention[]>([])
   const [selectedIv, setSelectedIv]             = useState<Intervention | null>(null)
@@ -838,6 +840,13 @@ export default function Planning() {
                       <CheckCircle size={14} /> Clôturer l'intervention
                     </button>
                   )}
+                  <button
+                    className="btn-secondary"
+                    style={{ justifyContent: 'center', fontSize: 13, background: '#fff7ed', border: '1.5px solid #fed7aa', color: '#f97316' }}
+                    onClick={() => { setSelectedIv(null); navigate(`/rapport?id=${selectedIv.id}`) }}
+                  >
+                    <ClipboardList size={13} /> Rapport d'intervention
+                  </button>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                     <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
                       onClick={() => { window.location.href = `tel:${selectedIv.phone.replace(/\s/g,'')}` }}>

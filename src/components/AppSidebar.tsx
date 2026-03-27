@@ -1,7 +1,8 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, PhoneCall, Calendar, FileText, Users,
-  Receipt, Settings, Bot, X, Droplets, ChevronRight, Package, ClipboardList
+  Receipt, Settings, Bot, X, Droplets, ChevronRight, Package, ClipboardList,
+  TrendingUp, Stamp
 } from 'lucide-react'
 
 const navSections = [
@@ -16,6 +17,7 @@ const navSections = [
     items: [
       { path: '/demandes', icon: PhoneCall, label: 'Demandes', badge: '4' },
       { path: '/planning', icon: Calendar, label: 'Planning' },
+      { path: '/rapport', icon: ClipboardList, label: 'Rapport chantier' },
     ]
   },
   {
@@ -31,6 +33,8 @@ const navSections = [
       { path: '/devis', icon: FileText, label: 'Devis' },
       { path: '/factures', icon: Receipt, label: 'Factures' },
       { path: '/clients', icon: Users, label: 'Clients' },
+      { path: '/statistiques', icon: TrendingUp, label: 'Statistiques' },
+      { path: '/attestation-tva', icon: Stamp, label: 'Attestation TVA' },
     ]
   },
   {

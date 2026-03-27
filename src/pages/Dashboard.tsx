@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import {
   TrendingUp, FileText, AlertTriangle, PhoneCall, Plus,
   Clock, CheckCircle, ChevronRight, RotateCcw,
-  Phone, MapPin, Calendar, Euro, Bot, MessageCircle, Copy, X
+  Phone, MapPin, Calendar, Euro, Bot, MessageCircle, Copy, X,
+  Navigation, ClipboardList
 } from 'lucide-react'
 import {
   getTodayInterventions, updateStatus, calcETA, minutesToHHMM,
@@ -402,15 +403,26 @@ export default function Dashboard() {
                           color: iv.typeColor, background: iv.typeBg,
                           padding: '1px 7px', borderRadius: 8
                         }}>{iv.type}</span>
-                        <span style={{ fontSize: 11.5, color: '#9ca3af', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          <MapPin size={10} style={{ marginRight: 2, verticalAlign: 'middle' }} />
+                        <span
+                          title="Ouvrir dans Google Maps"
+                          onClick={e => { e.stopPropagation(); if (iv.address) window.open(`https://maps.google.com/?q=${encodeURIComponent(iv.address)}`, '_blank') }}
+                          style={{ fontSize: 11.5, color: '#6b7280', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3 }}
+                        >
+                          <Navigation size={10} color="#3b82f6" />
                           {iv.address}
                         </span>
                       </div>
                     </div>
 
-                    {/* Status */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+                    {/* Actions rapides */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                      <button
+                        onClick={e => { e.stopPropagation(); navigate(`/rapport?id=${iv.id}`) }}
+                        title="Rapport d'intervention"
+                        style={{ padding: '4px 7px', borderRadius: 6, border: '1px solid #fed7aa', background: '#fff7ed', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#f97316', fontWeight: 600 }}
+                      >
+                        <ClipboardList size={11} /> Rapport
+                      </button>
                       <StatusIcon size={14} color={sc.color} />
                       <span style={{ fontSize: 11.5, color: sc.color, fontWeight: 600 }}>{sc.label}</span>
                     </div>
@@ -562,8 +574,10 @@ export default function Dashboard() {
               {[
                 { label: 'Nouveau devis', icon: FileText, path: '/devis', color: '#f97316' },
                 { label: 'Planifier', icon: Calendar, path: '/planning', color: '#3b82f6' },
-                { label: 'Nouveau client', icon: Plus, path: '/clients', color: '#10b981' },
-                { label: 'Voir factures', icon: TrendingUp, path: '/factures', color: '#7c3aed' },
+                { label: 'Rapport chantier', icon: ClipboardList, path: '/rapport', color: '#10b981' },
+                { label: 'Statistiques', icon: TrendingUp, path: '/statistiques', color: '#7c3aed' },
+                { label: 'Attestation TVA', icon: FileText, path: '/attestation-tva', color: '#0891b2' },
+                { label: 'Voir factures', icon: TrendingUp, path: '/factures', color: '#6b7280' },
               ].map(a => {
                 const Ic = a.icon
                 return (
