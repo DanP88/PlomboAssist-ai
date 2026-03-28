@@ -1,7 +1,10 @@
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { useState } from 'react'
 import AppSidebar from './AppSidebar'
-import { Bell, LogOut, User, Settings, ChevronDown, Menu, Search } from 'lucide-react'
+import {
+  Bell, LogOut, User, Settings, ChevronDown, Menu, Search,
+  LayoutDashboard, Calendar, PhoneCall, FileText, MoreHorizontal
+} from 'lucide-react'
 
 const notifList = [
   { title: '2 demandes urgentes', sub: 'M. Bernard · Mme Simon', time: 'Il y a 12 min', color: '#dc2626' },
@@ -10,12 +13,21 @@ const notifList = [
   { title: 'Rapport hebdomadaire', sub: 'CA : 8 420 € · 42 appels traités', time: 'Lundi 8h00', color: '#3b82f6' },
 ]
 
+const BOTTOM_TABS = [
+  { path: '/',          icon: LayoutDashboard, label: 'Accueil',   end: true },
+  { path: '/planning',  icon: Calendar,        label: 'Planning'              },
+  { path: '/demandes',  icon: PhoneCall,       label: 'Demandes',  badge: '4' },
+  { path: '/devis',     icon: FileText,        label: 'Devis'                 },
+  { path: null,         icon: MoreHorizontal,  label: 'Plus'                  },
+]
+
 export default function DashboardLayout({ onLogout }: { onLogout?: () => void }) {
-  const navigate = useNavigate()
-  const [menuOpen, setMenuOpen] = useState(false)
+  const navigate  = useNavigate()
+  const location  = useLocation()
+  const [menuOpen, setMenuOpen]       = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [notifOpen, setNotifOpen] = useState(false)
-  const [searchVal, setSearchVal] = useState('')
+  const [notifOpen, setNotifOpen]     = useState(false)
+  const [searchVal, setSearchVal]     = useState('')
 
   function handleLogout() {
     setMenuOpen(false)
@@ -26,13 +38,39 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
   function handleSearch(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== 'Enter' || !searchVal.trim()) return
     const q = searchVal.toLowerCase()
-    if (q.includes('client')) navigate('/clients')
-    else if (q.includes('devis')) navigate('/devis')
-    else if (q.includes('facture')) navigate('/factures')
+    if (q.includes('client'))                          navigate('/clients')
+    else if (q.includes('devis'))                      navigate('/devis')
+    else if (q.includes('facture'))                    navigate('/factures')
     else if (q.includes('planning') || q.includes('intervention')) navigate('/planning')
-    else if (q.includes('demande')) navigate('/demandes')
+    else if (q.includes('demande'))                    navigate('/demandes')
+    else if (q.includes('stock'))                      navigate('/stock')
+    else if (q.includes('stat'))                       navigate('/statistiques')
     setSearchVal('')
   }
+
+  function isTabActive(tab: typeof BOTTOM_TABS[0]) {
+    if (tab.path === null) return false
+    if (tab.end) return location.pathname === tab.path
+    return location.pathname.startsWith(tab.path)
+  }
+
+  // Page title for mobile header
+  const PAGE_TITLES: Record<string, string> = {
+    '/': 'Tableau de bord',
+    '/planning': 'Planning',
+    '/demandes': 'Demandes',
+    '/devis': 'Devis',
+    '/factures': 'Factures',
+    '/clients': 'Clients',
+    '/stock': 'Stock',
+    '/saisie-materiaux': 'Saisie matériaux',
+    '/assistant-ia': 'Assistant IA',
+    '/parametres': 'Paramètres',
+    '/rapport': 'Rapport chantier',
+    '/statistiques': 'Statistiques',
+    '/attestation-tva': 'Attestation TVA',
+  }
+  const pageTitle = PAGE_TITLES[location.pathname] || 'PlomboAssist'
 
   return (
     <div style={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
@@ -59,16 +97,33 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '0 18px',
+          padding: '0 16px',
           flexShrink: 0,
           position: 'relative',
           zIndex: 100,
-          gap: 12,
+          gap: 10,
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
+            {/* Hamburger — visible on mobile */}
             <button className="hamburger-btn" onClick={() => setSidebarOpen(true)}>
               <Menu size={21} color="#374151" />
             </button>
+
+            {/* Logo — shown on mobile when search is hidden */}
+            <div className="mobile-logo" style={{ display: 'none', alignItems: 'center', gap: 8 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 7,
+                background: 'linear-gradient(135deg, #f97316, #ea580c)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+              }}>
+                <span style={{ color: 'white', fontSize: 12, fontWeight: 800 }}>P</span>
+              </div>
+              <span style={{ fontSize: 13.5, fontWeight: 700, color: '#111827', fontFamily: 'Plus Jakarta Sans' }}>
+                {pageTitle}
+              </span>
+            </div>
+
+            {/* Search — hidden on mobile */}
             <div
               className="search-bar"
               style={{
@@ -91,13 +146,14 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
             </div>
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
             {/* Notifications */}
             <div style={{ position: 'relative' }}>
-              <div style={{ cursor: 'pointer', padding: 4 }} onClick={() => { setNotifOpen(!notifOpen); setMenuOpen(false) }}>
+              <div style={{ cursor: 'pointer', padding: 6, minWidth: 36, minHeight: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                onClick={() => { setNotifOpen(!notifOpen); setMenuOpen(false) }}>
                 <Bell size={19} color={notifOpen ? '#f97316' : '#6b7280'} />
                 <div style={{
-                  position: 'absolute', top: 1, right: 1,
+                  position: 'absolute', top: 4, right: 4,
                   width: 8, height: 8, background: '#f97316',
                   borderRadius: '50%', border: '1.5px solid white'
                 }} />
@@ -105,8 +161,8 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
               {notifOpen && (
                 <>
                   <div style={{ position: 'fixed', inset: 0, zIndex: 98 }} onClick={() => setNotifOpen(false)} />
-                  <div style={{
-                    position: 'absolute', top: 'calc(100% + 12px)', right: -8,
+                  <div className="notif-panel" style={{
+                    position: 'absolute', top: 'calc(100% + 10px)', right: -8,
                     background: 'white', borderRadius: 14, width: 320,
                     boxShadow: '0 8px 32px rgba(0,0,0,0.14)', border: '1px solid #f0f0f0',
                     zIndex: 99, overflow: 'hidden'
@@ -143,8 +199,8 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
                 style={{
                   display: 'flex', alignItems: 'center', gap: 9,
                   background: 'none', border: 'none', cursor: 'pointer',
-                  padding: '5px 8px', borderRadius: 9,
-                  transition: 'background 0.2s'
+                  padding: '4px 6px', borderRadius: 9,
+                  transition: 'background 0.2s', minHeight: 36
                 }}
                 onMouseEnter={e => (e.currentTarget.style.background = '#f8f9fb')}
                 onMouseLeave={e => (e.currentTarget.style.background = 'none')}
@@ -183,35 +239,21 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
                       { icon: User, label: 'Mon profil', path: '/parametres' },
                       { icon: Settings, label: 'Paramètres', path: '/parametres' },
                     ].map(({ icon: Icon, label, path }) => (
-                      <button
-                        key={label}
-                        onClick={() => { setMenuOpen(false); navigate(path) }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 15px', background: 'none', border: 'none',
-                          fontSize: 13.5, color: '#374151', cursor: 'pointer', textAlign: 'left',
-                          transition: 'background 0.15s'
-                        }}
+                      <button key={label} onClick={() => { setMenuOpen(false); navigate(path) }}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 15px', background: 'none', border: 'none', fontSize: 13.5, color: '#374151', cursor: 'pointer', textAlign: 'left', minHeight: 44 }}
                         onMouseEnter={e => (e.currentTarget.style.background = '#f9fafb')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                       >
-                        <Icon size={14} color="#6b7280" />
-                        {label}
+                        <Icon size={14} color="#6b7280" /> {label}
                       </button>
                     ))}
                     <div style={{ borderTop: '1px solid #f5f5f5' }}>
-                      <button
-                        onClick={handleLogout}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 15px', background: 'none', border: 'none',
-                          fontSize: 13.5, color: '#ef4444', cursor: 'pointer', textAlign: 'left',
-                        }}
+                      <button onClick={handleLogout}
+                        style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '11px 15px', background: 'none', border: 'none', fontSize: 13.5, color: '#ef4444', cursor: 'pointer', textAlign: 'left', minHeight: 44 }}
                         onMouseEnter={e => (e.currentTarget.style.background = '#fef2f2')}
                         onMouseLeave={e => (e.currentTarget.style.background = 'none')}
                       >
-                        <LogOut size={14} color="#ef4444" />
-                        Se déconnecter
+                        <LogOut size={14} color="#ef4444" /> Se déconnecter
                       </button>
                     </div>
                   </div>
@@ -226,6 +268,34 @@ export default function DashboardLayout({ onLogout }: { onLogout?: () => void })
           <Outlet />
         </main>
       </div>
+
+      {/* ── Bottom Tab Bar (mobile only) ── */}
+      <nav className="bottom-tab-bar" role="navigation" aria-label="Navigation principale">
+        {BOTTOM_TABS.map((tab) => {
+          const active = isTabActive(tab)
+          const Icon = tab.icon
+          return (
+            <button
+              key={tab.label}
+              className={`bottom-tab-item${active ? ' btab-active' : ''}`}
+              onClick={() => {
+                if (tab.path === null) {
+                  setSidebarOpen(true)
+                } else {
+                  navigate(tab.path)
+                }
+              }}
+              aria-label={tab.label}
+            >
+              <Icon size={20} strokeWidth={active ? 2.2 : 1.8} />
+              {tab.badge && !active && (
+                <span className="btab-badge">{tab.badge}</span>
+              )}
+              <span>{tab.label}</span>
+            </button>
+          )
+        })}
+      </nav>
     </div>
   )
 }

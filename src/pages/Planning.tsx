@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, ChevronRight, Plus, MapPin, Clock,
-  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy, Trash2, ClipboardList
+  Phone, CheckCircle, Calendar, X, Edit2, MessageCircle, Copy, Trash2, ClipboardList,
+  Navigation
 } from 'lucide-react'
+import { useIsMobile } from '../hooks/useIsMobile'
 import {
   addIntervention, getInterventions, updateStatus,
   updateIntervention, deleteIntervention, Intervention
@@ -63,9 +65,15 @@ function durationLabel(min: number) {
 interface SmsModal { phone: string; client: string; message: string }
 
 export default function Planning() {
-  const navigate = useNavigate()
+  const navigate   = useNavigate()
+  const isMobile   = useIsMobile()
   const [mapChoice, setMapChoice]               = useState<string | null>(null)
   const [weekOffset, setWeekOffset]             = useState(0)
+  const [mobileDay, setMobileDay]               = useState(() => {
+    // Default to today's index in current week (0=Mon)
+    const d = new Date().getDay()
+    return d === 0 ? 6 : d - 1
+  })
   const [allInterventions, setAllInterventions] = useState<Intervention[]>([])
   const [selectedIv, setSelectedIv]             = useState<Intervention | null>(null)
   const [showModal, setShowModal]               = useState(false)
@@ -336,6 +344,343 @@ export default function Planning() {
       setSmsCopied(true); setTimeout(() => setSmsCopied(false), 2000)
     })
   }
+
+  // ─── MOBILE VIEW ─────────────────────────────────────────────────────
+  if (isMobile) {
+    const mobileDayStr  = getDayDateStr(mobileDay)
+    const dayIvs        = allInterventions
+      .filter(iv => iv.date === mobileDayStr)
+      .sort((a, b) => a.startH * 60 + a.startM - (b.startH * 60 + b.startM))
+    const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+    const dayNamesLong = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche']
+
+    return (
+      <div style={{ background: '#f5f6fa', minHeight: '100%' }}>
+
+        {/* Semaine navigator */}
+        <div style={{
+          background: 'white', borderBottom: '1px solid #f0f0f0',
+          padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          <button className="btn-ghost" style={{ padding: '8px', minHeight: 36, minWidth: 36 }}
+            onClick={() => setWeekOffset(w => w - 1)}>
+            <ChevronLeft size={18} />
+          </button>
+          <div style={{ textAlign: 'center' }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#111827' }}>
+              Semaine du {weekLabel}
+            </div>
+            <div style={{ fontSize: 11, color: '#9ca3af' }}>
+              {weekDone}/{weekTotal} interventions
+            </div>
+          </div>
+          <button className="btn-ghost" style={{ padding: '8px', minHeight: 36, minWidth: 36 }}
+            onClick={() => setWeekOffset(w => w + 1)}>
+            <ChevronRight size={18} />
+          </button>
+        </div>
+
+        {/* Day selector — horizontal scroll */}
+        <div style={{
+          background: 'white', padding: '10px 6px 0',
+          borderBottom: '1px solid #f0f0f0',
+          display: 'flex', gap: 0, overflowX: 'auto',
+          scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch'
+        }}>
+          {WEEK_DAYS.map((_, i) => {
+            const ds   = getDayDateStr(i)
+            const date = getDayDate(i)
+            const count = allInterventions.filter(iv => iv.date === ds).length
+            const isToday = ds === todayStr
+            const isSelected = i === mobileDay
+            return (
+              <button key={i} onClick={() => setMobileDay(i)} style={{
+                flex: '0 0 calc(100% / 7)', display: 'flex', flexDirection: 'column',
+                alignItems: 'center', padding: '6px 2px 10px', border: 'none', background: 'transparent',
+                cursor: 'pointer', position: 'relative', minWidth: 44,
+                borderBottom: isSelected ? '2.5px solid #f97316' : '2.5px solid transparent',
+              }}>
+                <span style={{
+                  fontSize: 10, fontWeight: 600, color: isSelected ? '#f97316' : '#9ca3af',
+                  textTransform: 'uppercase', letterSpacing: '0.05em'
+                }}>{dayNames[i]}</span>
+                <div style={{
+                  width: 32, height: 32, borderRadius: '50%', marginTop: 3,
+                  background: isSelected ? '#f97316' : isToday ? '#fff7ed' : 'transparent',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  border: isToday && !isSelected ? '1.5px solid #fed7aa' : 'none',
+                }}>
+                  <span style={{
+                    fontSize: 14, fontWeight: 700,
+                    color: isSelected ? 'white' : isToday ? '#f97316' : '#374151'
+                  }}>{date.getDate()}</span>
+                </div>
+                {count > 0 && (
+                  <div style={{
+                    width: 6, height: 6, borderRadius: '50%', marginTop: 3,
+                    background: isSelected ? '#f97316' : '#e5e7eb'
+                  }} />
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Day header */}
+        <div style={{ padding: '14px 14px 6px' }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>
+            {dayNamesLong[mobileDay]} {getDayDate(mobileDay).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })}
+          </div>
+          <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+            {dayIvs.length === 0 ? 'Aucune intervention' : `${dayIvs.length} intervention${dayIvs.length > 1 ? 's' : ''}`}
+          </div>
+        </div>
+
+        {/* Interventions list */}
+        <div style={{ padding: '4px 14px 0', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {dayIvs.length === 0 && (
+            <div style={{
+              background: 'white', borderRadius: 14, padding: '28px 16px', textAlign: 'center',
+              border: '1px dashed #e5e7eb', color: '#9ca3af'
+            }}>
+              <Calendar size={32} style={{ margin: '0 auto 10px', opacity: 0.3 }} />
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Aucune intervention</div>
+              <div style={{ fontSize: 12, marginTop: 4 }}>Appuyez sur + pour en ajouter</div>
+            </div>
+          )}
+          {dayIvs.map((iv, idx) => {
+            const endM = iv.startH * 60 + iv.startM + iv.durationMin
+            const sc = STATUS_CONFIG[iv.status] || STATUS_CONFIG['scheduled']
+            return (
+              <div key={iv.id} onClick={() => { setSelectedIv(iv) }} style={{
+                background: 'white', borderRadius: 14, border: `1px solid ${iv.typeBorder}`,
+                padding: '14px 14px', cursor: 'pointer',
+                borderLeft: `4px solid ${iv.typeColor}`,
+              }}>
+                {/* Header row */}
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+                  <div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#111827' }}>{iv.client}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 3 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 6, background: iv.typeBg, color: iv.typeColor }}>
+                        {iv.type}
+                      </span>
+                      <span style={{ fontSize: 11, color: sc.color, fontWeight: 600 }}>{sc.label}</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: '#111827' }}>
+                      {String(iv.startH).padStart(2,'0')}:{String(iv.startM).padStart(2,'0')}
+                    </div>
+                    <div style={{ fontSize: 11, color: '#9ca3af' }}>
+                      → {fmtHM(endM)} · {durationLabel(iv.durationMin)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Details */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {iv.address && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <MapPin size={12} color="#9ca3af" style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#6b7280', flex: 1 }}>{iv.address}</span>
+                    </div>
+                  )}
+                  {iv.phone && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                      <Phone size={12} color="#9ca3af" style={{ flexShrink: 0 }} />
+                      <span style={{ fontSize: 12, color: '#6b7280' }}>{iv.phone}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Quick actions */}
+                <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                  {iv.phone && (
+                    <a href={`tel:${iv.phone.replace(/\s/g,'')}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                        padding: '9px 12px', borderRadius: 9, border: '1.5px solid #e5e7eb',
+                        background: 'white', color: '#374151', fontSize: 12, fontWeight: 600,
+                        textDecoration: 'none'
+                      }}>
+                      <Phone size={13} /> Appeler
+                    </a>
+                  )}
+                  {iv.address && (
+                    <button onClick={e => { e.stopPropagation(); setMapChoice(iv.address) }} style={{
+                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                      padding: '9px 12px', borderRadius: 9, border: '1.5px solid #bfdbfe',
+                      background: '#eff6ff', color: '#2563eb', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                    }}>
+                      <Navigation size={13} /> GPS
+                    </button>
+                  )}
+                  <button onClick={e => { e.stopPropagation(); navigate(`/rapport?id=${iv.id}`) }} style={{
+                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+                    padding: '9px 12px', borderRadius: 9, border: '1.5px solid #fed7aa',
+                    background: '#fff7ed', color: '#f97316', fontSize: 12, fontWeight: 600, cursor: 'pointer'
+                  }}>
+                    <ClipboardList size={13} /> Rapport
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Waze/GMaps choice panel on mobile */}
+        {mapChoice && (
+          <div className="modal-overlay" onClick={() => setMapChoice(null)}>
+            <div className="modal-box" onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#111827', marginBottom: 4 }}>Ouvrir avec</div>
+              <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>{mapChoice}</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button onClick={() => { window.open(`https://waze.com/ul?q=${encodeURIComponent(mapChoice)}&navigate=yes`, '_blank'); setMapChoice(null) }}
+                  style={{ padding: '14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  🚗 <span>Waze</span>
+                </button>
+                <button onClick={() => { window.open(`https://maps.google.com/?q=${encodeURIComponent(mapChoice)}`, '_blank'); setMapChoice(null) }}
+                  style={{ padding: '14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  🗺️ <span>Google Maps</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* FAB new intervention */}
+        <button className="mobile-fab" onClick={() => openModal(mobileDayStr)}>
+          <Plus size={24} />
+        </button>
+
+        {/* Reuse the existing modals — detail modal */}
+        {selectedIv && (
+          <div className="modal-overlay" onClick={() => { setSelectedIv(null); setEditMode(false); setConfirmDelete(false) }}>
+            <div className="modal-box" style={{ maxWidth: 400 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#111827' }}>{selectedIv.client}</div>
+                  <div style={{ fontSize: 12, color: '#9ca3af', marginTop: 2 }}>
+                    {formatDate(selectedIv.date)} · {durationLabel(selectedIv.durationMin)}
+                  </div>
+                </div>
+                <button className="btn-ghost" style={{ padding: 6 }} onClick={() => { setSelectedIv(null); setEditMode(false) }}>
+                  <X size={16} />
+                </button>
+              </div>
+
+              {!editMode && (
+                <>
+                  <div style={{ background: selectedIv.typeBg, border: `1px solid ${selectedIv.typeBorder}`, borderRadius: 9, padding: '10px 14px', marginBottom: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: selectedIv.typeColor }}>{selectedIv.type}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, borderRadius: 6, padding: '2px 8px', background: 'white', color: STATUS_CONFIG[selectedIv.status]?.color || '#6b7280' }}>
+                      {STATUS_CONFIG[selectedIv.status]?.label || selectedIv.status}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 18 }}>
+                    {[
+                      { icon: Clock, text: `${selectedIv.startH}:${String(selectedIv.startM).padStart(2,'0')} – ${fmtHM(selectedIv.startH*60+selectedIv.startM+selectedIv.durationMin)} (${durationLabel(selectedIv.durationMin)})` },
+                      { icon: MapPin, text: selectedIv.address || 'Adresse non renseignée' },
+                      { icon: Phone, text: selectedIv.phone || 'Téléphone non renseigné' },
+                    ].map(({ icon: Ic, text }) => (
+                      <div key={text} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <Ic size={14} color="#9ca3af" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ fontSize: 13.5, color: '#374151' }}>{text}</span>
+                      </div>
+                    ))}
+                    {selectedIv.notes && (
+                      <div style={{ background: '#f5f6fa', borderRadius: 8, padding: '8px 12px', fontSize: 12.5, color: '#6b7280' }}>
+                        {selectedIv.notes}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {selectedIv.status !== 'done' && (
+                      <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleCloturer(selectedIv)}>
+                        <CheckCircle size={14} /> Clôturer l'intervention
+                      </button>
+                    )}
+                    <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13, background: '#fff7ed', border: '1.5px solid #fed7aa', color: '#f97316' }}
+                      onClick={() => { setSelectedIv(null); navigate(`/rapport?id=${selectedIv.id}`) }}>
+                      <ClipboardList size={13} /> Rapport d'intervention
+                    </button>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <a href={`tel:${selectedIv.phone?.replace(/\s/g,'')}`} className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13, textDecoration: 'none' }}>
+                        <Phone size={13} /> Appeler
+                      </a>
+                      <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
+                        onClick={() => setMapChoice(selectedIv.address)}>
+                        <MapPin size={13} /> Itinéraire
+                      </button>
+                    </div>
+                    <button onClick={() => setConfirmDelete(true)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'none', border: '1.5px solid #fecaca', borderRadius: 10, color: '#dc2626', fontSize: 13, fontWeight: 600, padding: '9px 16px', cursor: 'pointer' }}>
+                      <Trash2 size={14} /> Supprimer
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* GPS choice modal */}
+        {mapChoice && selectedIv && (
+          <div className="modal-overlay" onClick={() => setMapChoice(null)}>
+            <div className="modal-box" style={{ maxWidth: 360 }} onClick={e => e.stopPropagation()}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#111827', marginBottom: 14 }}>Ouvrir avec…</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button onClick={() => { window.open(`https://waze.com/ul?q=${encodeURIComponent(mapChoice)}&navigate=yes`, '_blank'); setMapChoice(null) }}
+                  style={{ padding: '14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  🚗 Waze
+                </button>
+                <button onClick={() => { window.open(`https://maps.google.com/?q=${encodeURIComponent(mapChoice)}`, '_blank'); setMapChoice(null) }}
+                  style={{ padding: '14px', borderRadius: 10, border: '1.5px solid #e5e7eb', background: 'white', cursor: 'pointer', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10 }}>
+                  🗺️ Google Maps
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* New intervention modal */}
+        {showModal && (
+          <div className="modal-overlay" onClick={() => setShowModal(false)}>
+            <div className="modal-box" style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+                <h3 style={{ fontSize: 17, fontWeight: 700, color: '#111827' }}>Nouvelle intervention</h3>
+                <button className="btn-ghost" style={{ padding: 6 }} onClick={() => setShowModal(false)}><X size={16} /></button>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                <input className="input-field" placeholder="Nom du client *" value={formClient} onChange={e => setFormClient(e.target.value)} />
+                <input className="input-field" placeholder="Adresse" value={formAddress} onChange={e => setFormAddress(e.target.value)} />
+                <input className="input-field" placeholder="Téléphone" type="tel" value={formPhone} onChange={e => setFormPhone(e.target.value)} />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <input className="input-field" type="date" value={formDate} onChange={e => setFormDate(e.target.value)} />
+                  <input className="input-field" type="time" value={formTime} onChange={e => setFormTime(e.target.value)} />
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <select className="select-field" value={formType} onChange={e => setFormType(e.target.value)}>
+                    {Object.keys(TYPE_COLORS).map(t => <option key={t}>{t}</option>)}
+                  </select>
+                  <select className="select-field" value={formDuration} onChange={e => setFormDuration(e.target.value)}>
+                    {Object.keys(DURATIONS).map(d => <option key={d}>{d}</option>)}
+                  </select>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 4 }}>
+                  <button className="btn-secondary" style={{ justifyContent: 'center' }} onClick={() => setShowModal(false)}>Annuler</button>
+                  <button className="btn-primary" style={{ justifyContent: 'center' }} onClick={() => handleCreate()}>Créer</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+  // ─── END MOBILE VIEW ──────────────────────────────────────────────────
 
   return (
     <div style={{ maxWidth: 1300, margin: '0 auto' }}>

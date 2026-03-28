@@ -2,12 +2,23 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ─── Reset & base ────────────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bottom-bar-height: 64px;
+  --header-height: 56px;
+  --mobile-pad: 14px;
+  --touch-min: 44px;
+  --radius-card: 14px;
+}
 
 body {
   font-family: 'Inter', sans-serif;
   background-color: #f5f6fa;
   color: #1a1f2e;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
 }
 
 h1, h2, h3, h4, h5 {
@@ -72,7 +83,7 @@ h1, h2, h3, h4, h5 {
   letter-spacing: 0.01em;
 }
 .btn-primary:hover { opacity: 0.92; transform: translateY(-1px); }
-.btn-primary:active { transform: translateY(0); }
+.btn-primary:active { transform: translateY(0); opacity: 0.85; }
 
 .btn-secondary {
   background: white;
@@ -89,6 +100,7 @@ h1, h2, h3, h4, h5 {
   transition: all 0.2s;
 }
 .btn-secondary:hover { background: #f9fafb; border-color: #d1d5db; }
+.btn-secondary:active { background: #f3f4f6; }
 
 .btn-outline {
   background: transparent;
@@ -140,7 +152,6 @@ h1, h2, h3, h4, h5 {
 .badge-amber  { background: #fffbeb; color: #d97706; }
 .badge-purple { background: #faf5ff; color: #7c3aed; }
 
-/* urgency specific */
 .badge-urgent     { background: #fef2f2; color: #dc2626; }
 .badge-semi       { background: #fffbeb; color: #d97706; }
 .badge-planif     { background: #f0fdf4; color: #16a34a; }
@@ -233,6 +244,7 @@ h1, h2, h3, h4, h5 {
   justify-content: center;
   z-index: 1000;
   backdrop-filter: blur(2px);
+  padding: 16px;
 }
 .modal-box {
   background: white;
@@ -242,6 +254,8 @@ h1, h2, h3, h4, h5 {
   max-width: 520px;
   box-shadow: 0 24px 64px rgba(0,0,0,0.2);
   animation: modalIn 0.2s ease;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
 }
 @keyframes modalIn {
   from { opacity: 0; transform: scale(0.96) translateY(8px); }
@@ -274,6 +288,11 @@ h1, h2, h3, h4, h5 {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 16px;
+}
+
+/* ─── Bottom Tab Bar ──────────────────────────────────────── */
+.bottom-tab-bar {
+  display: none;
 }
 
 /* ─── Sidebar mobile ──────────────────────────────────────── */
@@ -319,7 +338,26 @@ h1, h2, h3, h4, h5 {
   line-height: 1;
 }
 
-/* ─── Responsive ──────────────────────────────────────────── */
+/* ─── Mobile list cards (Devis, Factures, Stock, Clients) ─── */
+.m-list-card {
+  background: white;
+  border-radius: var(--radius-card);
+  border: 1px solid #f0f0f0;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+  box-shadow: none;
+}
+
+/* ─── Mobile FAB ──────────────────────────────────────────── */
+.mobile-fab {
+  display: none;
+}
+
+/* ─── Responsive — Tablette 1024px ───────────────────────── */
 @media (max-width: 1024px) {
   .grid-4 { grid-template-columns: repeat(2, 1fr); }
   .grid-2-1 { grid-template-columns: 1fr; }
@@ -328,7 +366,10 @@ h1, h2, h3, h4, h5 {
 
 .sidebar-wrapper { transition: transform 0.3s ease; }
 
+/* ─── Responsive — Mobile 768px ──────────────────────────── */
 @media (max-width: 768px) {
+
+  /* Sidebar slide-out */
   .sidebar-wrapper {
     position: fixed !important;
     top: 0; left: 0;
@@ -341,10 +382,258 @@ h1, h2, h3, h4, h5 {
   .sidebar-backdrop.open { display: block; }
   .search-bar { display: none !important; }
   .avatar-text, .avatar-chevron { display: none !important; }
+  .mobile-logo { display: flex !important; }
+
+  /* Bottom tab bar */
+  .bottom-tab-bar {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: var(--bottom-bar-height);
+    background: white;
+    border-top: 1px solid #efefef;
+    box-shadow: 0 -2px 16px rgba(0,0,0,0.07);
+    z-index: 150;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    align-items: stretch;
+  }
+
+  .bottom-tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    padding: 6px 4px;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    color: #9ca3af;
+    transition: color 0.15s, background 0.15s;
+    min-height: var(--touch-min);
+    -webkit-tap-highlight-color: transparent;
+    font-family: 'Inter', sans-serif;
+    position: relative;
+  }
+  .bottom-tab-item:active { background: #f9fafb; }
+  .bottom-tab-item.btab-active { color: #f97316; }
+  .bottom-tab-item.btab-active svg { color: #f97316; }
+  .bottom-tab-item span {
+    font-size: 9.5px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  .btab-badge {
+    position: absolute;
+    top: 7px;
+    right: calc(50% - 14px);
+    background: #f97316;
+    color: white;
+    font-size: 9px;
+    font-weight: 700;
+    min-width: 16px;
+    height: 16px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+    border: 1.5px solid white;
+  }
+
+  /* Main content with bottom bar space */
+  main {
+    padding-bottom: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom, 0px) + 16px) !important;
+  }
+
+  /* Modal → bottom sheet on mobile */
+  .modal-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-box {
+    border-radius: 20px 20px 0 0 !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 92dvh !important;
+    padding: 20px 18px 32px !important;
+    animation: slideUp 0.28s cubic-bezier(0.32, 0.72, 0, 1) !important;
+  }
+  @keyframes slideUp {
+    from { transform: translateY(100%); opacity: 0.7; }
+    to   { transform: translateY(0);    opacity: 1; }
+  }
+
+  /* Grab handle on modal sheets */
+  .modal-box::before {
+    content: '';
+    display: block;
+    width: 36px;
+    height: 4px;
+    background: #e5e7eb;
+    border-radius: 2px;
+    margin: 0 auto 16px;
+  }
+
+  /* Better tap targets for buttons */
+  .btn-primary, .btn-secondary, .btn-outline {
+    min-height: var(--touch-min);
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+  .btn-ghost {
+    min-height: var(--touch-min);
+  }
+
+  /* FAB visible on mobile */
+  .mobile-fab {
+    display: flex;
+    position: fixed;
+    bottom: calc(var(--bottom-bar-height) + env(safe-area-inset-bottom, 0px) + 16px);
+    right: 18px;
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: white;
+    border: none;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(249,115,22,0.45);
+    z-index: 140;
+    transition: transform 0.15s;
+  }
+  .mobile-fab:active { transform: scale(0.94); }
+
+  /* Tabs - horizontally scrollable on mobile */
+  .tabs-scrollable {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    border-bottom: 1px solid #f0f0f0;
+    display: flex;
+    gap: 0;
+    flex-wrap: nowrap;
+  }
+  .tabs-scrollable::-webkit-scrollbar { display: none; }
+  .tab-button {
+    padding: 10px 14px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  /* KPI grid — 2x2 on mobile */
+  .grid-4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+    margin-bottom: 12px !important;
+  }
+
+  /* Single column everything */
+  .grid-2, .grid-2-1, .grid-planning {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+
+  /* Notification panel full width */
+  .notif-panel {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(var(--bottom-bar-height) + 8px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+  }
 }
 
-@media (max-width: 640px) {
-  main { padding: 10px !important; }
-  .grid-4 { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 10px !important; }
-  .grid-2-1, .grid-planning, .grid-2 { grid-template-columns: 1fr; gap: 10px; }
+/* ─── Responsive — Petit mobile 480px ────────────────────── */
+@media (max-width: 480px) {
+  main { padding: 12px !important; padding-bottom: calc(var(--bottom-bar-height) + 24px) !important; }
+
+  /* KPI cards compacts */
+  .grid-4 { gap: 8px !important; }
+
+  /* Typography mobile */
+  h1 { font-size: 18px !important; }
+  h3 { font-size: 14px !important; }
+
+  /* Masque les éléments secondaires */
+  .desktop-only { display: none !important; }
+
+  /* Scroll horizontal pour stats charts */
+  .chart-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .chart-scroll > * { min-width: 300px; }
+
+  /* Table → cards */
+  .table-to-cards thead { display: none; }
+  .table-to-cards tbody tr {
+    display: block;
+    background: white;
+    border-radius: 12px;
+    border: 1px solid #f0f0f0;
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .table-to-cards tbody td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 4px 0;
+    border: none;
+    font-size: 13px;
+  }
+  .table-to-cards tbody td::before {
+    content: attr(data-label);
+    font-size: 11px;
+    font-weight: 600;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+}
+
+/* ─── Dashboard mobile ───────────────────────────────────── */
+@media (max-width: 480px) {
+  /* KPI cards compactes */
+  .kpi-card-value { font-size: 20px !important; }
+  .kpi-card { padding: 14px !important; }
+  .kpi-card-icon { width: 30px !important; height: 30px !important; }
+
+  /* "J'ai fini" banner stacked */
+  .jfini-banner {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .jfini-banner > button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Page headers compacts */
+  .page-icon { width: 36px !important; height: 36px !important; }
+
+  /* Interventions day list */
+  .iv-row-address { display: none !important; }
+
+  /* Rapport chantier - hide some columns */
+  .rapport-recap-col { display: none !important; }
+
+  /* Stats charts scroll */
+  .stats-row { flex-direction: column !important; }
+}
+
+/* ─── Safe area iOS ───────────────────────────────────────── */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .bottom-tab-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
