@@ -6,10 +6,11 @@ import {
   MapPin, X, FileText, AlertCircle, User
 } from 'lucide-react'
 import { getInterventions, Intervention } from '../lib/agenda'
-import { getStock, Materiau } from '../lib/stock'
+import { getStock, Materiau, enregistrerUtilisation } from '../lib/stock'
 
 interface LigneMateriaux {
   id: string
+  materiauId?: number   // id dans le stock, pour la déduction
   nom: string
   quantite: number
   unite: string
@@ -164,6 +165,7 @@ export default function RapportIntervention() {
   const addMateriau = (m: Materiau) => {
     setMateriaux(prev => [...prev, {
       id: Date.now().toString(),
+      materiauId: m.id,
       nom: m.nom,
       quantite: 1,
       unite: m.unite,
@@ -182,6 +184,8 @@ export default function RapportIntervention() {
     m.reference.toLowerCase().includes(stockSearch.toLowerCase())
   )
 
+  const [stockUpdated, setStockUpdated] = useState(false)
+
   const handleSave = (status: 'brouillon' | 'termine') => {
     const r: Rapport = {
       id: interventionId ? `rap-${interventionId}` : `rap-${Date.now()}`,
@@ -194,6 +198,29 @@ export default function RapportIntervention() {
       createdAt: new Date().toISOString(),
     }
     saveRapport(r)
+
+    // Déduire du stock uniquement à la finalisation et si pas déjà fait
+    if (status === 'termine' && !stockUpdated && materiaux.length > 0) {
+      const lignes = materiaux
+        .filter(m => m.materiauId !== undefined)
+        .map(m => ({
+          materiauId: m.materiauId!,
+          nomMateriau: m.nom,
+          quantite: m.quantite,
+          unite: m.unite,
+        }))
+      if (lignes.length > 0) {
+        enregistrerUtilisation({
+          date,
+          intervention: typeIntervention,
+          client: clientNom,
+          lignes,
+          note: `Rapport chantier — ${travauxRealises.slice(0, 80)}`,
+        })
+        setStockUpdated(true)
+      }
+    }
+
     setSaved(true)
     if (status === 'termine') setTimeout(() => navigate('/planning'), 1200)
   }
@@ -359,7 +386,14 @@ export default function RapportIntervention() {
                 background: '#fff7ed', color: '#f97316', fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 display: 'flex', alignItems: 'center', gap: 5
               }}>
-                <Plus size={12} /> Ajouter depuis le stock
+                <Plus size={12} /> Depuis le stock
+              </button>
+              <button onClick={() => setMateriaux(prev => [...prev, { id: Date.now().toString(), nom: '', quantite: 1, unite: 'pcs', prixUnitaire: 0 }])} style={{
+                padding: '6px 12px', borderRadius: 7, border: '1.5px solid #e5e7eb',
+                background: '#f9fafb', color: '#6b7280', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                display: 'flex', alignItems: 'center', gap: 5
+              }}>
+                <Plus size={12} /> Saisie libre
               </button>
             </div>
 
@@ -402,7 +436,16 @@ export default function RapportIntervention() {
                 <tbody>
                   {materiaux.map(m => (
                     <tr key={m.id} style={{ borderBottom: '1px solid #f9fafb' }}>
-                      <td style={{ padding: '7px 8px', color: '#111827', fontWeight: 500 }}>{m.nom}</td>
+                      <td style={{ padding: '7px 8px' }}>
+                        {m.materiauId
+                          ? <><div style={{ fontWeight: 500, color: '#111827', fontSize: 12 }}>{m.nom}</div>
+                             <div style={{ fontSize: 10, color: '#16a34a', marginTop: 1 }}>✓ lié au stock</div></>
+                          : <><input value={m.nom} onChange={e => setMateriaux(prev => prev.map(x => x.id === m.id ? { ...x, nom: e.target.value } : x))}
+                              placeholder="Nom du matériau"
+                              style={{ width: '100%', padding: '3px 6px', borderRadius: 4, border: '1px solid #e5e7eb', fontSize: 11 }} />
+                             <div style={{ fontSize: 10, color: '#9ca3af', marginTop: 1 }}>hors stock</div></>
+                        }
+                      </td>
                       <td style={{ padding: '7px 8px' }}>
                         <input type="number" value={m.quantite} min={0.1} step={0.1}
                           onChange={e => updateMateriauQty(m.id, parseFloat(e.target.value))}
@@ -580,6 +623,7 @@ export default function RapportIntervention() {
                 { label: 'Durée chrono', value: timerSeconds > 0 ? `${Math.ceil(timerSeconds/60)} min` : '—' },
                 { label: 'Matériaux', value: `${materiaux.length} article(s)` },
                 { label: 'Coût matériaux', value: `${totalMat.toFixed(2)} €` },
+                { label: 'Stock', value: stockUpdated ? '✓ Mis à jour' : materiaux.length > 0 ? 'Mis à jour à la finalisation' : '—' },
                 { label: 'Photos', value: `${photos.length} photo(s)` },
                 { label: 'Signature', value: signature ? '✓ Obtenue' : 'En attente' },
               ].map(r => (

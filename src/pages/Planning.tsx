@@ -64,6 +64,7 @@ interface SmsModal { phone: string; client: string; message: string }
 
 export default function Planning() {
   const navigate = useNavigate()
+  const [mapChoice, setMapChoice]               = useState<string | null>(null)
   const [weekOffset, setWeekOffset]             = useState(0)
   const [allInterventions, setAllInterventions] = useState<Intervention[]>([])
   const [selectedIv, setSelectedIv]             = useState<Intervention | null>(null)
@@ -852,10 +853,33 @@ export default function Planning() {
                       onClick={() => { window.location.href = `tel:${selectedIv.phone.replace(/\s/g,'')}` }}>
                       <Phone size={13} /> Appeler
                     </button>
-                    <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13 }}
-                      onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selectedIv.address)}`, '_blank')}>
-                      <MapPin size={13} /> Itinéraire
-                    </button>
+                    <div style={{ position: 'relative' }}>
+                      <button className="btn-secondary" style={{ justifyContent: 'center', fontSize: 13, width: '100%' }}
+                        onClick={() => setMapChoice(mapChoice ? null : (selectedIv?.address || ''))}>
+                        <MapPin size={13} /> Itinéraire ▾
+                      </button>
+                      {mapChoice && (
+                        <div style={{
+                          position: 'absolute', bottom: 'calc(100% + 6px)', left: 0, right: 0,
+                          background: 'white', border: '1.5px solid #e5e7eb', borderRadius: 10,
+                          boxShadow: '0 4px 16px rgba(0,0,0,0.12)', overflow: 'hidden', zIndex: 50
+                        }}>
+                          <button onClick={() => { window.open(`https://waze.com/ul?q=${encodeURIComponent(mapChoice)}&navigate=yes`, '_blank'); setMapChoice(null) }}
+                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                            <span style={{ fontSize: 16 }}>🚗</span> Waze
+                          </button>
+                          <div style={{ height: 1, background: '#f3f4f6' }} />
+                          <button onClick={() => { window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapChoice)}`, '_blank'); setMapChoice(null) }}
+                            style={{ width: '100%', padding: '10px 14px', border: 'none', background: 'white', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, color: '#374151' }}
+                            onMouseEnter={e => e.currentTarget.style.background = '#f9fafb'}
+                            onMouseLeave={e => e.currentTarget.style.background = 'white'}>
+                            <span style={{ fontSize: 16 }}>🗺️</span> Google Maps
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Suppression avec confirmation */}

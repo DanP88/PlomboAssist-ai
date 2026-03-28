@@ -125,6 +125,7 @@ export default function AssistantIA() {
     nextTravelMin?: number
   }
   const [travelCtx, setTravelCtx] = useState<TravelContext | null>(null)
+  const [travelConflict, setTravelConflict] = useState<{ type: 'prev' | 'next'; travelMin: number; gapMin: number } | null>(null)
   const [ringCount, setRingCount]   = useState(0)
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const chatEndRef = useRef<HTMLDivElement>(null)
@@ -159,6 +160,7 @@ export default function AssistantIA() {
   /* ─── Step transitions ─────────────────────────────────────────────── */
   function startCall() {
     setTravelCtx(null)
+    setTravelConflict(null)
     setStep('ringing')
     setMessages([])
     setClientInfo({})
@@ -374,6 +376,35 @@ export default function AssistantIA() {
       const prevTravelMin = (prevCoords && newCoords) ? await getTravelTimeMin(prevCoords, newCoords) : undefined
       const nextTravelMin = (newCoords && nextCoords) ? await getTravelTimeMin(newCoords, nextCoords) : undefined
       setTravelCtx({ loading: false, prevIv, prevTravelMin, nextIv, nextTravelMin })
+
+      // Vérifier si le créneau est réellement atteignable
+      if (prevIv && prevTravelMin !== undefined) {
+        const prevEnd = prevIv.startH * 60 + prevIv.startM + prevIv.durationMin
+        const gapMin = slot.startH * 60 + slot.startM - prevEnd
+        if (prevTravelMin > gapMin) {
+          setTravelConflict({ type: 'prev', travelMin: prevTravelMin, gapMin })
+          setTimeout(() => {
+            setMessages(p => [...p, {
+              from: 'ia',
+              text: `⚠️ Attention : d'après les distances réelles, le trajet depuis le RDV précédent prend **${prevTravelMin} min** mais seulement **${gapMin} min** sont disponibles. Ce créneau est trop serré. Je vous propose un autre créneau plus confortable ?`
+            }])
+          }, 1200)
+          return
+        }
+      }
+      if (nextIv && nextTravelMin !== undefined) {
+        const slotEnd = slot.startH * 60 + slot.startM + slot.durationMin
+        const gapMin = nextIv.startH * 60 + nextIv.startM - slotEnd
+        if (nextTravelMin > gapMin) {
+          setTravelConflict({ type: 'next', travelMin: nextTravelMin, gapMin })
+          setTimeout(() => {
+            setMessages(p => [...p, {
+              from: 'ia',
+              text: `⚠️ Attention : le trajet vers le RDV suivant prend **${nextTravelMin} min** mais seulement **${gapMin} min** sont disponibles après cette intervention. Je vous conseille de prendre un autre créneau pour ne pas être en retard.`
+            }])
+          }, 1200)
+        }
+      }
     } catch {
       setTravelCtx({ loading: false, prevIv, nextIv })
     }
@@ -642,18 +673,41 @@ export default function AssistantIA() {
                     </div>
                   )}
                   {step === 'slot_proposal' && slotInfo && (
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button onClick={handleConfirm} style={{
-                        padding: '10px 20px', borderRadius: 20,
-                        background: 'linear-gradient(135deg, #10b981, #059669)',
-                        color: 'white', border: 'none', fontSize: 13.5, fontWeight: 700,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
-                      }}>
-                        <CheckCircle size={15} /> Confirmer ce rendez-vous
-                      </button>
-                      {altSlotCount < 2 && (
-                        <ChoiceBtn label="Proposer un autre créneau" onClick={handleAltSlot} />
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {travelConflict && (
+                        <div style={{
+                          background: '#fef2f2', border: '1.5px solid #fecaca', borderRadius: 10,
+                          padding: '10px 14px', fontSize: 12, color: '#dc2626', fontWeight: 600,
+                          display: 'flex', alignItems: 'flex-start', gap: 8
+                        }}>
+                          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                          <span>
+                            Créneau trop serré : trajet réel <strong>{travelConflict.travelMin} min</strong>,
+                            seulement <strong>{travelConflict.gapMin} min</strong> disponibles.
+                            Confirmez quand même ou prenez un autre créneau.
+                          </span>
+                        </div>
                       )}
+                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                        <button onClick={handleConfirm} style={{
+                          padding: '10px 20px', borderRadius: 20,
+                          background: travelConflict
+                            ? 'linear-gradient(135deg, #f97316, #ea580c)'
+                            : 'linear-gradient(135deg, #10b981, #059669)',
+                          color: 'white', border: 'none', fontSize: 13.5, fontWeight: 700,
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6
+                        }}>
+                          <CheckCircle size={15} />
+                          {travelConflict ? 'Confirmer quand même' : 'Confirmer ce rendez-vous'}
+                        </button>
+                        {(altSlotCount < 3 || travelConflict) && (
+                          <ChoiceBtn
+                            label={travelConflict ? '✦ Autre créneau (recommandé)' : 'Proposer un autre créneau'}
+                            onClick={() => { setTravelConflict(null); handleAltSlot() }}
+                            color={travelConflict ? '#f97316' : undefined}
+                          />
+                        )}
+                      </div>
                     </div>
                   )}
                   {/* Text inputs */}
@@ -812,17 +866,27 @@ export default function AssistantIA() {
                             {travelCtx.prevIv.client} · {travelCtx.prevIv.startH}h{String(travelCtx.prevIv.startM).padStart(2,'0')}–{Math.floor((travelCtx.prevIv.startH * 60 + travelCtx.prevIv.startM + travelCtx.prevIv.durationMin)/60)}h{String((travelCtx.prevIv.startH * 60 + travelCtx.prevIv.startM + travelCtx.prevIv.durationMin)%60).padStart(2,'0')}
                           </div>
                           <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>{travelCtx.prevIv.address}</div>
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            background: travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#fff7ed' : '#f0fdf4',
-                            border: `1px solid ${travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#fed7aa' : '#a7f3d0'}`,
-                            borderRadius: 7, padding: '4px 8px'
-                          }}>
-                            <span style={{ fontSize: 13 }}>🚗</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25 ? '#92400e' : '#15803d' }}>
-                              {travelCtx.prevTravelMin !== undefined ? `~${travelCtx.prevTravelMin} min de trajet` : '~20 min (estimé)'}
-                            </span>
-                          </div>
+                          {(() => {
+                            const prevEnd = travelCtx.prevIv ? travelCtx.prevIv.startH * 60 + travelCtx.prevIv.startM + travelCtx.prevIv.durationMin : 0
+                            const slotStart = slotInfo ? slotInfo.startH * 60 + slotInfo.startM : 0
+                            const gap = slotStart - prevEnd
+                            const isConflict = travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > gap
+                            const isTight = travelCtx.prevTravelMin !== undefined && travelCtx.prevTravelMin > 25
+                            return (
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                background: isConflict ? '#fef2f2' : isTight ? '#fff7ed' : '#f0fdf4',
+                                border: `1px solid ${isConflict ? '#fecaca' : isTight ? '#fed7aa' : '#a7f3d0'}`,
+                                borderRadius: 7, padding: '4px 8px'
+                              }}>
+                                <span style={{ fontSize: 13 }}>🚗</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: isConflict ? '#dc2626' : isTight ? '#92400e' : '#15803d' }}>
+                                  {travelCtx.prevTravelMin !== undefined ? `~${travelCtx.prevTravelMin} min de trajet` : '~20 min (estimé)'}
+                                  {isConflict && ` ⚠️ (${gap} min dispo)`}
+                                </span>
+                              </div>
+                            )
+                          })()}
                         </div>
                       ) : (
                         <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic', marginBottom: 8 }}>
@@ -841,17 +905,27 @@ export default function AssistantIA() {
                             {travelCtx.nextIv.client} · {travelCtx.nextIv.startH}h{String(travelCtx.nextIv.startM).padStart(2,'0')}
                           </div>
                           <div style={{ fontSize: 11, color: '#9ca3af', marginBottom: 6 }}>{travelCtx.nextIv.address}</div>
-                          <div style={{
-                            display: 'flex', alignItems: 'center', gap: 6,
-                            background: travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#fff7ed' : '#f0fdf4',
-                            border: `1px solid ${travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#fed7aa' : '#a7f3d0'}`,
-                            borderRadius: 7, padding: '4px 8px'
-                          }}>
-                            <span style={{ fontSize: 13 }}>🚗</span>
-                            <span style={{ fontSize: 12, fontWeight: 700, color: travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25 ? '#92400e' : '#15803d' }}>
-                              {travelCtx.nextTravelMin !== undefined ? `~${travelCtx.nextTravelMin} min de trajet` : '~20 min (estimé)'}
-                            </span>
-                          </div>
+                          {(() => {
+                            const slotEnd = slotInfo ? slotInfo.startH * 60 + slotInfo.startM + slotInfo.durationMin : 0
+                            const nextStart = travelCtx.nextIv ? travelCtx.nextIv.startH * 60 + travelCtx.nextIv.startM : 0
+                            const gap = nextStart - slotEnd
+                            const isConflict = travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > gap
+                            const isTight = travelCtx.nextTravelMin !== undefined && travelCtx.nextTravelMin > 25
+                            return (
+                              <div style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                background: isConflict ? '#fef2f2' : isTight ? '#fff7ed' : '#f0fdf4',
+                                border: `1px solid ${isConflict ? '#fecaca' : isTight ? '#fed7aa' : '#a7f3d0'}`,
+                                borderRadius: 7, padding: '4px 8px'
+                              }}>
+                                <span style={{ fontSize: 13 }}>🚗</span>
+                                <span style={{ fontSize: 12, fontWeight: 700, color: isConflict ? '#dc2626' : isTight ? '#92400e' : '#15803d' }}>
+                                  {travelCtx.nextTravelMin !== undefined ? `~${travelCtx.nextTravelMin} min de trajet` : '~20 min (estimé)'}
+                                  {isConflict && ` ⚠️ (${gap} min dispo)`}
+                                </span>
+                              </div>
+                            )
+                          })()}
                         </div>
                       ) : (
                         <div style={{ fontSize: 12, color: '#9ca3af', fontStyle: 'italic' }}>
